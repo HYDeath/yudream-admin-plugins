@@ -1,0 +1,6 @@
+{
+  "license": "MIT",
+  "category": "服务器与社区",
+  "tags": ["qqrobot", "binding", "group", "resource-market", "item-render", "craft-engine"],
+  "releaseNotes": "0.1.0：首个版本。提供社交账号绑定、群组管理、资源市场卡片渲染、背包与潜影盒物品渲染，以及 Minecraft 服务端桥接协议。\n"
+}
