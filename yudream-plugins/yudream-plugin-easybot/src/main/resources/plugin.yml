@@ -1,0 +1,9 @@
+name: easybot
+displayName: QQ机器人
+description: QQ 机器人接入、绑定与群组管理、图片模板、资源市场、物品渲染，并为 Minecraft 服务端插件提供桥接。
+icon: i-ri:robot-2-line
+main: online.yudream.plugin.easybot.bootstrap.EasyBotPlugin
+version: 0.1.0
+menu:
+  category: mc
+
