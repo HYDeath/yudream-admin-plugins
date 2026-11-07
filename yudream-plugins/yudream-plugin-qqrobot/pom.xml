@@ -8,7 +8,7 @@
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <artifactId>yudream-plugin-qqrobot</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <dependencies>
     <dependency>
       <groupId>online.yudream.base</groupId>
@@ -29,6 +29,10 @@
     <resources>
       <resource>
         <directory>src/main/resources</directory>
+        <!-- 内置纹理只以 builtin-textures.zip 发布；目录里散放的 PNG 是抽取临时产物。 -->
+        <excludes>
+          <exclude>textures/**</exclude>
+        </excludes>
       </resource>
       <resource>
         <directory>../../yudream-frontend/packages/plugin-qqrobot/dist</directory>

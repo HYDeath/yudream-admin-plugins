@@ -19,6 +19,9 @@ import online.yudream.plugin.qqrobot.domain.BindSettings;
 import online.yudream.plugin.qqrobot.domain.GroupSettings;
 import online.yudream.plugin.qqrobot.domain.ResourceEntry;
 import online.yudream.plugin.qqrobot.domain.ImageTemplate;
+import online.yudream.plugin.qqrobot.domain.QqBotSettings;
+import online.yudream.plugin.qqrobot.application.service.QqApiClient;
+import online.yudream.base.plugin.spi.system.secret.PluginSecretStore;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -38,11 +41,12 @@ public class QqRobotHttpFacade {
     private final RenderSupport renderSupport;
     private final NoticeService notices;
     private final TemplateService templates;
+    private final PluginSecretStore secrets;
 
     public QqRobotHttpFacade(SettingsService settings, BindingService bindings, BindCodeService codes,
                              GroupService groups, ResourceService resources, BridgeHub bridge,
                              InventoryPreview preview, RenderSupport renderSupport, NoticeService notices,
-                             TemplateService templates) {
+                             TemplateService templates, PluginSecretStore secrets) {
         this.settings = settings;
         this.bindings = bindings;
         this.codes = codes;
@@ -53,10 +57,83 @@ public class QqRobotHttpFacade {
         this.renderSupport = renderSupport;
         this.notices = notices;
         this.templates = templates;
+        this.secrets = secrets;
     }
 
     public PluginHttpResponse bindSettings() {
         return PluginHttpResponse.ok(settings.bindSettings());
+    }
+
+    public PluginHttpResponse botSettings() {
+        Map<String, Object> view = new LinkedHashMap<>(settings.botSettings().toView());
+        view.put("secretConfigured", secretConfigured(settings.botSettings().appSecretRef()));
+        view.put("publicKeyConfigured", secretConfigured("qq-webhook-public-key"));
+        return PluginHttpResponse.ok(view);
+    }
+
+    public PluginHttpResponse saveBotSettings(PluginHttpRequest request) {
+        return handle(() -> {
+            JsonNode body = read(request);
+            QqBotSettings saved = settings.saveBotSettings(
+                    mapper.convertValue(body, QqBotSettings.class));
+            String secret = body.path("appSecret").asText("");
+            if (!secret.isBlank()) {
+                secrets.put(saved.appSecretRef(), secret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            String publicKey = body.path("webhookPublicKey").asText("");
+            if (!publicKey.isBlank()) {
+                secrets.put("qq-webhook-public-key",
+                        publicKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            Map<String, Object> view = new LinkedHashMap<>(saved.toView());
+            view.put("secretConfigured", secretConfigured(saved.appSecretRef()));
+            view.put("publicKeyConfigured", secretConfigured("qq-webhook-public-key"));
+            return PluginHttpResponse.ok(view);
+        });
+    }
+
+    /**
+     * 连通性自检：用当前凭证换一次 app access token。只读，不发消息，
+     * 避免误打扰真实用户。
+     */
+    public PluginHttpResponse testBot(PluginHttpRequest request) {
+        return handle(() -> {
+            QqBotSettings bot = settings.botSettings();
+            String secret = secretValue(bot.appSecretRef());
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("appId", bot.appId());
+            body.put("apiBase", bot.apiBase());
+            body.put("webhookPath", bot.webhookPath());
+            if (!bot.enabled()) {
+                body.put("ok", false);
+                body.put("message", "机器人尚未启用");
+                return PluginHttpResponse.ok(body);
+            }
+            if (bot.appId().isBlank() || secret.isBlank()) {
+                body.put("ok", false);
+                body.put("message", "缺少 AppID 或 AppSecret");
+                return PluginHttpResponse.ok(body);
+            }
+            QqApiClient client = new QqApiClient();
+            String token = client.accessToken(bot.appId(), secret);
+            body.put("ok", token != null);
+            body.put("message", token == null
+                    ? "换取 access_token 失败，请检查 AppID / AppSecret 是否与开放平台一致"
+                    : "凭证有效，可正常调用开放平台接口");
+            return PluginHttpResponse.ok(body);
+        });
+    }
+
+    private boolean secretConfigured(String name) {
+        return !secretValue(name).isBlank();
+    }
+
+    private String secretValue(String name) {
+        try {
+            return secrets.get(name).map(String::new).orElse("");
+        } catch (RuntimeException exception) {
+            return "";
+        }
     }
 
     public PluginHttpResponse saveBindSettings(PluginHttpRequest request) {
@@ -217,6 +294,23 @@ public class QqRobotHttpFacade {
      */
     public PluginHttpResponse previewInventory() {
         return renderPreview(() -> preview.sample().get(30, TimeUnit.SECONDS));
+    }
+
+    /** 指定物品的单图预览：{@code ?item=minecraft:leather_helmet}，走内置纹理与着色。 */
+    public PluginHttpResponse previewItem(PluginHttpRequest request) {
+        return renderPreview(() -> {
+            String id = query(request, "item");
+            if (id == null || id.isBlank()) {
+                id = "minecraft:diamond_sword";
+            }
+            int count = intQuery(request, "count", 1);
+            return preview.item(id, count).get(30, TimeUnit.SECONDS);
+        });
+    }
+
+    /** 末影箱 + 多个潜影盒的容器版式预览。 */
+    public PluginHttpResponse previewContainers() {
+        return renderPreview(() -> preview.containerSample().get(30, TimeUnit.SECONDS));
     }
 
     public PluginHttpResponse previewSingle() {

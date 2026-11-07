@@ -4,6 +4,8 @@ import type {
   BridgeState,
   ConnectionOption,
   QqRobotNotice,
+  QqBotSettings,
+  QqBotTestResult,
   GroupSettings,
   ImageTemplateDetail,
   ImageTemplateSummary,
@@ -17,6 +19,11 @@ export function createQqRobotApi(sdk: YuDreamPluginSdk) {
     bindSettings: () => sdk.http.get<BindSettings>('/admin/settings/bind'),
     saveBindSettings: (settings: BindSettings) =>
       sdk.http.request<BindSettings>('/admin/settings/bind', { method: 'PUT', data: settings }),
+
+    botSettings: () => sdk.http.get<QqBotSettings>('/admin/settings/bot'),
+    saveBotSettings: (settings: QqBotSettings & { appSecret?: string, webhookPublicKey?: string }) =>
+      sdk.http.request<QqBotSettings>('/admin/settings/bot', { method: 'PUT', data: settings }),
+    testBot: () => sdk.http.request<QqBotTestResult>('/admin/settings/bot/test', { method: 'POST', data: {} }),
 
     groups: (page: number, size: number) =>
       sdk.http.get<PageResult<GroupSettings>>(`/admin/groups?page=${page}&size=${size}`),

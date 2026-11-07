@@ -1,11 +1,14 @@
 package online.yudream.plugin.qqrobot.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
 /**
  * 服务端上报的物品快照。纹理以 PNG data URI 形式携带，
  * 后台不解析资源包格式，只负责排版渲染。
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ItemView(
         String itemId,
         int count,

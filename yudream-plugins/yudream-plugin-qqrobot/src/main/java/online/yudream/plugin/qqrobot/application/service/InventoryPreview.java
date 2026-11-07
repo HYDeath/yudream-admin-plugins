@@ -1,6 +1,7 @@
 package online.yudream.plugin.qqrobot.application.service;
 
 import online.yudream.base.plugin.spi.system.render.PluginRenderedImage;
+import online.yudream.plugin.qqrobot.domain.ContainerView;
 import online.yudream.plugin.qqrobot.domain.ItemView;
 
 import java.util.ArrayList;
@@ -25,11 +26,59 @@ public class InventoryPreview {
     }
 
     public CompletableFuture<PluginRenderedImage> sample() {
-        return renderer.inventory("背包预览", sampleItems(), avatars.body("Steve"), "Steve · 瑶光天工");
+        return renderer.inventory("背包预览", sampleItems(), avatars.body("Steve"),
+                "Steve · 瑶光天工", sampleContainers());
+    }
+
+    /** 只出容器页：对齐服务端 /末影箱、/潜影盒 的上报形态（items 为空）。 */
+    public CompletableFuture<PluginRenderedImage> containerSample() {
+        return renderer.inventory("容器预览", List.of(), avatars.body("Steve"),
+                "末影箱 + 2 个潜影盒", sampleContainers());
+    }
+
+    /**
+     * 演示多容器版式：末影箱单独一箱，背包里的两个潜影盒按槽位各出一块，
+     * 与服务端真实上报结构一致，便于在前端核对标题和顺序。
+     */
+    public List<ContainerView> sampleContainers() {
+        List<ItemView> ender = new ArrayList<>(27);
+        for (int index = 0; index < 27; index++) {
+            ender.add(air());
+        }
+        ender.set(0, item("minecraft:diamond_block", 12, "", List.of(), List.of(), "common"));
+        ender.set(1, item("minecraft:emerald_block", 5, "", List.of(), List.of(), "common"));
+        ender.set(13, item("minecraft:netherite_ingot", 9, "", List.of(), List.of(), "rare"));
+        ender.set(26, item("minecraft:enchanted_golden_apple", 3, "", List.of(), List.of(), "epic"));
+
+        // 「背包 1」的顶层容器直接用 sampleItems 里那个潜影盒的内容，
+        // 保证预览和服务端“物品自带 + 顶层容器”双来源一致，能验证去重。
+        List<ItemView> loot = sampleItems().get(9).container();
+        List<ItemView> building = new ArrayList<>(27);
+        for (int index = 0; index < 27; index++) {
+            building.add(air());
+        }
+        building.set(0, item("minecraft:diamond", 64, "", List.of(), List.of(), "common"));
+        building.set(8, item("minecraft:gold_ingot", 64, "", List.of(), List.of(), "common"));
+        return List.of(
+                new ContainerView("ender_chest", "末影箱", "末影箱", ender).normalized(),
+                new ContainerView("shulker", "战利品箱", "背包 1", loot).normalized(),
+                new ContainerView("shulker", "建材箱", "背包 6", building).normalized()
+        );
     }
 
     public CompletableFuture<PluginRenderedImage> single() {
         return renderer.single(diamondSword());
+    }
+
+    /**
+     * 任意物品的单图：依赖内置原版纹理，用于后台逐个核对图标与占位回退。
+     * 未知/无纹理物品仍会渲染成首字母占位，不会报错。
+     */
+    public CompletableFuture<PluginRenderedImage> item(String id, int count) {
+        String itemId = id == null || id.isBlank() ? "minecraft:diamond_sword" : id.trim();
+        ItemView value = new ItemView(itemId, Math.max(1, Math.min(9999, count)), 0, 0,
+                "", List.of(), List.of(), "", "common", 0, List.of()).normalized();
+        return renderer.single(value);
     }
 
     /**

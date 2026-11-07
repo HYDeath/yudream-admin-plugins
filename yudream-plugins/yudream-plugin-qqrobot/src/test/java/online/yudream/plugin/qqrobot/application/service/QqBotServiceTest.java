@@ -3,6 +3,8 @@ package online.yudream.plugin.qqrobot.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import online.yudream.base.plugin.spi.system.storage.PluginDocumentStore;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
+import online.yudream.plugin.qqrobot.domain.QqBotSettings;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -20,6 +22,29 @@ class QqBotServiceTest {
     private final BindCodeService codes = new BindCodeService();
     private final NoticeService notices = new NoticeService(store);
     private final QqBotService bot = new QqBotService(settings, codes, notices, null);
+
+    @BeforeEach
+    void enableBot() {
+        QqBotSettings defaults = QqBotSettings.defaults();
+        settings.saveBotSettings(new QqBotSettings(true, "102000000", defaults.appSecretRef(),
+                defaults.webhookPath(), defaults.apiBase(), true, true, true,
+                defaults.friendAddMessage(), defaults.groupAddMessage(), true));
+    }
+
+    @Test
+    void disabledBotIgnoresEvents() throws Exception {
+        QqBotSettings current = settings.botSettings();
+        settings.saveBotSettings(new QqBotSettings(false, current.appId(), current.appSecretRef(),
+                current.webhookPath(), current.apiBase(), true, true, true,
+                current.friendAddMessage(), current.groupAddMessage(), true));
+
+        Map<String, Object> result = bot.handle(mapper.readTree("""
+                {"t":"FRIEND_ADD","openid":"A1B2C3D4E5F6A1B2"}
+                """));
+
+        assertEquals("", result.get("reply"));
+        assertEquals("机器人未启用", result.get("ignored"));
+    }
 
     @Test
     void friendAddReturnsBindingGuide() throws Exception {

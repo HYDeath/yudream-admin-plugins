@@ -2,6 +2,7 @@ import { defineYuDreamPlugin } from '@yudream/plugin-sdk'
 import 'virtual:uno.css'
 import './style.css'
 import BindSettingsPage from './pages/BindSettingsPage.vue'
+import BotSettingsPage from './pages/BotSettingsPage.vue'
 import BridgePage from './pages/BridgePage.vue'
 import GroupsPage from './pages/GroupsPage.vue'
 import MarketPage from './pages/MarketPage.vue'
@@ -9,6 +10,7 @@ import PreviewPage from './pages/PreviewPage.vue'
 import TemplatesPage from './pages/TemplatesPage.vue'
 
 export const BindSettings = BindSettingsPage
+export const BotSettings = BotSettingsPage
 export const Groups = GroupsPage
 export const Market = MarketPage
 export const Bridge = BridgePage
@@ -17,12 +19,14 @@ export const Templates = TemplatesPage
 
 export const routes = {
   BindSettings,
+  BotSettings,
   Groups,
   Market,
   Bridge,
   Preview,
   Templates,
   'qqrobot/BindSettings': BindSettings,
+  'qqrobot/BotSettings': BotSettings,
   'qqrobot/Groups': Groups,
   'qqrobot/Market': Market,
   'qqrobot/Bridge': Bridge,

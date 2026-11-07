@@ -2,14 +2,16 @@ package online.yudream.plugin.qqrobot.application.service;
 
 import online.yudream.base.plugin.spi.system.render.PluginRenderedImage;
 import online.yudream.base.plugin.spi.system.render.PluginRenderService;
+import online.yudream.plugin.qqrobot.domain.ContainerView;
 import online.yudream.plugin.qqrobot.domain.ItemView;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * 把物品/背包快照排版成 PNG。所有图片都来自服务端上报的
- * data URI，HTML 不访问外网，渲染结果可缓存。
+ * 把物品/背包快照排版成 PNG。图片优先用服务端上报的 data URI（带资源包纹理），
+ * 缺失时回落到插件内置的原版纹理，最后才是首字母占位。HTML 不访问外网，
+ * 渲染结果可缓存。
  */
 public class ItemCardRenderer {
     private static final int STORAGE_SLOTS = 27;
@@ -21,9 +23,15 @@ public class ItemCardRenderer {
     private static final int CARD_ICON_SIZE = 160;
 
     private final RenderSupport render;
+    private final BuiltinTextures builtin;
 
     public ItemCardRenderer(RenderSupport render) {
+        this(render, new BuiltinTextures());
+    }
+
+    public ItemCardRenderer(RenderSupport render, BuiltinTextures builtin) {
         this.render = render;
+        this.builtin = builtin == null ? new BuiltinTextures() : builtin;
     }
 
     public ItemCardRenderer(PluginRenderService render) {
@@ -41,7 +49,17 @@ public class ItemCardRenderer {
     /** 带玩家皮肤与副标题的版本；皮肤是 data URI，由调用方保证不访问外网。 */
     public CompletableFuture<PluginRenderedImage> inventory(String title, List<ItemView> items,
                                                            String skinDataUri, String subtitle) {
-        return safely(() -> render.html(inventoryHtml(title, items, skinDataUri, subtitle),
+        return inventory(title, items, skinDataUri, subtitle, List.of());
+    }
+
+    /**
+     * 带外部容器（末影箱、多个潜影盒）的版本。容器既可能来自顶层上报，
+     * 也可能藏在物品的 {@code container} 字段里；这里合并去重后统一排在背包下方。
+     */
+    public CompletableFuture<PluginRenderedImage> inventory(String title, List<ItemView> items,
+                                                           String skinDataUri, String subtitle,
+                                                           List<ContainerView> containers) {
+        return safely(() -> render.html(inventoryHtml(title, items, skinDataUri, subtitle, containers),
                 "#inventory-card", "背包渲染"), "背包渲染");
     }
 
@@ -62,7 +80,8 @@ public class ItemCardRenderer {
         }
     }
 
-    private String inventoryHtml(String title, List<ItemView> items, String skinDataUri, String subtitle) {
+    private String inventoryHtml(String title, List<ItemView> items, String skinDataUri, String subtitle,
+                                 List<ContainerView> containers) {
         List<ItemView> normalized = items == null ? List.of() : items.stream().map(ItemView::normalized).toList();
         // 参考 QqRobot 的「玩家背包」版式：左侧护甲两格、中间立体皮肤、右侧副手，
         // 下方 27 格存储 + 9 格快捷栏。装备不再单列，避免和护甲重复。
@@ -83,12 +102,15 @@ public class ItemCardRenderer {
         for (int index = 0; index < HOTBAR_SLOTS; index++) {
             hotbar.append(slot(itemAt(normalized, index), 0));
         }
-        List<String> containers = containers(normalized);
+        // 只查容器（/末影箱、/潜影盒）时 items 为空，不该铺满两屏空格子。
+        boolean hasInventory = normalized.stream().anyMatch(item -> !item.empty());
+        List<String> containerBlocks = containers(normalized, containers);
         return page("<div id=\"inventory-card\">"
                 + "<div class=\"head\"><div class=\"title\">" + escape(title) + "</div>"
                 + (subtitle == null || subtitle.isBlank() ? ""
                 : "<div class=\"subtitle\">" + escape(subtitle) + "</div>") + "</div>"
-                + "<div class=\"player\">"
+                + (hasInventory
+                ? "<div class=\"player\">"
                 + "<div class=\"equip left\">" + equipment + "</div>"
                 + "<div class=\"figure\">" + skin + "<div class=\"figure-glow\"></div></div>"
                 + "<div class=\"equip right\">" + offhand + "</div>"
@@ -96,7 +118,8 @@ public class ItemCardRenderer {
                 + "<div class=\"grid\">" + storage + "</div>"
                 + "<div class=\"section\"><div class=\"section-label\">快捷栏</div><div class=\"grid hotbar\">"
                 + hotbar + "</div></div>"
-                + String.join("", containers)
+                : "")
+                + String.join("", containerBlocks)
                 + "</div>");
     }
 
@@ -119,36 +142,86 @@ public class ItemCardRenderer {
         return "<span class=\"durability\"><span style=\"width:" + percent + "%\"></span></span>";
     }
 
-    private List<String> containers(List<ItemView> items) {
+    private List<String> containers(List<ItemView> items, List<ContainerView> extra) {
         List<String> blocks = new java.util.ArrayList<>();
-        for (int index = 0; index < items.size() && blocks.size() < 6; index++) {
+        // 已经由顶层列表上报过的槽位不再重复渲染（兼容还没去重的旧服务端）。
+        java.util.Set<String> reported = new java.util.HashSet<>();
+        // 末影箱排最前：它是玩家最常查的，放底部不容易被多个潜影盒挤走。
+        if (extra != null) {
+            for (ContainerView container : extra) {
+                ContainerView value = container.normalized();
+                if (!value.empty()) {
+                    reported.add(value.sourceSlot());
+                    blocks.add(containerBlock(value.kind(), value.label(), value.sourceSlot(),
+                            value.items(), 1));
+                }
+            }
+        }
+        for (int index = 0; index < items.size(); index++) {
             ItemView item = items.get(index);
-            if (item.openedContainer()) {
-                blocks.add(containerBlock(item, index, 1));
+            String slot = slotLabel(index);
+            if (item.openedContainer() && !reported.contains(slot)) {
+                blocks.add(containerBlock("shulker", displayName(item), slot, item.container(), 1));
             }
         }
         return blocks;
     }
 
-    private String containerBlock(ItemView item, int index, int depth) {
+    /** 把背包下标翻译成玩家能对上的位置，例如“快捷栏 3”“背包 12”“护甲 2”。 */
+    static String slotLabel(int index) {
+        if (index >= 0 && index < HOTBAR_SLOTS) {
+            return "快捷栏 " + (index + 1);
+        }
+        if (index >= HOTBAR_SLOTS && index < STORAGE_SLOTS + HOTBAR_SLOTS) {
+            return "背包 " + (index - HOTBAR_SLOTS + 1);
+        }
+        // 与服务端 ItemSerializer 的槽位命名保持一致，避免同一格两边叫法不同。
+        return switch (index) {
+            case 36 -> "靴子";
+            case 37 -> "护腿";
+            case 38 -> "胸甲";
+            case 39 -> "头盔";
+            case 40 -> "副手";
+            default -> "槽位 " + (index + 1);
+        };
+    }
+
+    private String containerBlock(String kind, String label, String sourceSlot,
+                                  List<ItemView> contents, int depth) {
         if (depth > MAX_CONTAINER_DEPTH) {
             return "";
         }
         StringBuilder grid = new StringBuilder();
         for (int slot = 0; slot < 27; slot++) {
-            ItemView content = slot < item.container().size() ? item.container().get(slot) : null;
+            ItemView content = slot < contents.size() ? contents.get(slot) : null;
             grid.append(slot(content, depth));
         }
         StringBuilder nested = new StringBuilder();
         if (depth < MAX_CONTAINER_DEPTH) {
-            for (ItemView content : item.container()) {
+            for (ItemView content : contents) {
                 if (content.openedContainer()) {
-                    nested.append(containerBlock(content, index, depth + 1));
+                    nested.append(containerBlock("shulker", displayName(content), "", content.container(),
+                            depth + 1));
                 }
             }
         }
-        return "<div class=\"section container\"><div class=\"section-label\">潜影盒 · "
-                + escape(stripColors(displayName(item))) + "</div><div class=\"grid\">" + grid + "</div>" + nested + "</div>";
+        String title = switch (kind) {
+            case "ender_chest" -> "末影箱";
+            case "shulker" -> "潜影盒";
+            default -> "容器";
+        };
+        // 末影箱的 label 就是“末影箱”，再拼一次会变成“末影箱 · 末影箱”。
+        String name = label == null || label.isBlank() ? "" : stripColors(label);
+        if (name.equals(title)) {
+            name = "";
+        }
+        // 末影箱的来源槽位也是“末影箱”，和标题重复时不显示。
+        String meta = sourceSlot == null || sourceSlot.isBlank()
+                || sourceSlot.equals(title) || sourceSlot.equals(label)
+                ? "" : "<span class=\"section-meta\">" + escape(sourceSlot) + "</span>";
+        return "<div class=\"section container\"><div class=\"section-label\">" + title
+                + (name.isEmpty() ? "" : " · " + escape(name)) + meta
+                + "</div><div class=\"grid\">" + grid + "</div>" + nested + "</div>";
     }
 
     private static ItemView itemAt(List<ItemView> items, int index) {
@@ -176,7 +249,7 @@ public class ItemCardRenderer {
                     .append(" / ").append(value.maxDamage()).append("</div>");
         }
         if (value.openedContainer()) {
-            extras.append(containerBlock(value, 0, 1));
+            extras.append(containerBlock("shulker", displayName(value), "", value.container(), 1));
         }
         return page("<div id=\"item-card\" class=\"single\">" + icon(value, CARD_ICON_SIZE)
                 + "<div class=\"single-tip\">" + tooltip + extras + "</div></div>");
@@ -214,6 +287,12 @@ public class ItemCardRenderer {
             return "<img class=\"icon\" style=\"width:" + size + "px;height:" + size + "px\" src=\""
                     + item.iconDataUri() + "\" alt=\"\">";
         }
+        // 服务端没上报（后台预览），或该物品在资源包里没命中：用内置原版纹理。
+        var fallbackIcon = builtin.icon(item.itemId(), BuiltinTextures.defaultLeatherColor(item.itemId()));
+        if (fallbackIcon.isPresent()) {
+            return "<img class=\"icon\" style=\"width:" + size + "px;height:" + size + "px\" src=\""
+                    + fallbackIcon.get() + "\" alt=\"\">";
+        }
         String label = prettify(item.shortId());
         String initial = label.isEmpty() ? "?" : label.substring(0, 1).toUpperCase();
         return "<div class=\"fallback\" style=\"width:" + size + "px;height:" + size + "px\" title=\""
@@ -231,6 +310,7 @@ public class ItemCardRenderer {
                 .section{margin-top:20px}
                 .section.container{margin-top:14px;padding:12px;border-radius:12px;background:#141419;border:1px solid #2a2a35}
                 .section-label{font-size:12px;color:#8b8ba0;margin-bottom:8px;letter-spacing:1px}
+                .section-meta{margin-left:8px;padding:1px 7px;border-radius:999px;background:#23232d;color:#9a9ab0}
                 .head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
                 .subtitle{font-size:12px;color:#8b8ba0}
                 .player{display:flex;align-items:center;justify-content:center;gap:28px;margin:0 0 24px;
@@ -264,8 +344,12 @@ public class ItemCardRenderer {
                   background:linear-gradient(90deg,#3ddc84,#a3e635)}
                 .label{display:block;width:72px;text-align:center;font-size:10px;line-height:1.2;
                   color:#8b8ba0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-                .glint{position:absolute;inset:0;border-radius:10px;
-                  background:linear-gradient(120deg,rgba(170,120,255,.22),transparent 60%)}
+                /* 附魔光效：一条 1px 斜向高光 + 极淡内辉光。整块填色会变成紫色方块。 */
+                .glint{position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);
+                  border-radius:8px;pointer-events:none;
+                  background:linear-gradient(115deg,
+                    transparent 38%,rgba(216,190,255,.55) 47%,rgba(216,190,255,.55) 53%,transparent 62%);
+                  box-shadow:inset 0 0 6px rgba(170,120,255,.35)}
                 .opened{position:absolute;left:5px;top:5px;width:7px;height:7px;border-radius:50%;
                   background:#79c0ff;box-shadow:0 0 6px #79c0ff}
                 .tooltip{display:none;position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);

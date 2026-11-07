@@ -18,6 +18,21 @@ public class QqRobotController {
         return http.bindSettings();
     }
 
+    @PluginHttpEndpoint(method = "GET", path = "/admin/settings/bot", permission = MANAGE)
+    public PluginHttpResponse botSettings() {
+        return http.botSettings();
+    }
+
+    @PluginHttpEndpoint(method = "PUT", path = "/admin/settings/bot", permission = MANAGE)
+    public PluginHttpResponse saveBotSettings(PluginHttpRequest request) {
+        return http.saveBotSettings(request);
+    }
+
+    @PluginHttpEndpoint(method = "POST", path = "/admin/settings/bot/test", permission = MANAGE)
+    public PluginHttpResponse testBot(PluginHttpRequest request) {
+        return http.testBot(request);
+    }
+
     @PluginHttpEndpoint(method = "PUT", path = "/admin/settings/bind", permission = MANAGE)
     public PluginHttpResponse saveBindSettings(PluginHttpRequest request) {
         return http.saveBindSettings(request);
@@ -109,8 +124,13 @@ public class QqRobotController {
     }
 
     @PluginHttpEndpoint(method = "GET", path = "/admin/preview/item.png", permission = MANAGE)
-    public PluginHttpResponse previewSingle() {
-        return http.previewSingle();
+    public PluginHttpResponse previewSingle(PluginHttpRequest request) {
+        return http.previewItem(request);
+    }
+
+    @PluginHttpEndpoint(method = "GET", path = "/admin/preview/containers.png", permission = MANAGE)
+    public PluginHttpResponse previewContainers() {
+        return http.previewContainers();
     }
 
     @PluginHttpEndpoint(method = "GET", path = "/admin/render/status", permission = MANAGE)

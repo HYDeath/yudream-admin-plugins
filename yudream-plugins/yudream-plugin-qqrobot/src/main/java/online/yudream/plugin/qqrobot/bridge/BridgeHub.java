@@ -12,6 +12,7 @@ import online.yudream.plugin.qqrobot.application.service.GroupService;
 import online.yudream.plugin.qqrobot.application.service.ItemCardRenderer;
 import online.yudream.plugin.qqrobot.application.service.SettingsService;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
+import online.yudream.plugin.qqrobot.domain.ContainerView;
 import online.yudream.plugin.qqrobot.domain.ItemView;
 
 import java.time.Instant;
@@ -351,6 +352,8 @@ public class BridgeHub {
 
     private void handleInventory(BridgeSession session, String requestId, JsonNode data) {
         String title = text(data, "title");
+        String subtitle = text(data, "subtitle");
+        String skin = text(data, "skin");
         List<ItemView> items = new ArrayList<>();
         JsonNode array = data.path("items");
         if (array.isArray()) {
@@ -358,7 +361,17 @@ public class BridgeHub {
                 items.add(readItem(node));
             }
         }
-        this.items.inventory(title, items).whenComplete((image, error) -> {
+        List<ContainerView> containers = new ArrayList<>();
+        JsonNode reported = data.path("containers");
+        if (reported.isArray()) {
+            for (JsonNode node : reported) {
+                List<ItemView> contents = new ArrayList<>();
+                node.path("items").forEach(line -> contents.add(readItem(line)));
+                containers.add(new ContainerView(text(node, "kind"), text(node, "label"),
+                        text(node, "slot"), contents).normalized());
+            }
+        }
+        this.items.inventory(title, items, skin, subtitle, containers).whenComplete((image, error) -> {
             if (error != null || image == null || image.content() == null) {
                 write(session, error(requestId, "物品渲染失败"));
                 return;

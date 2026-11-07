@@ -41,6 +41,18 @@ public class TemplateService {
     private final RenderSupport render;
     private final String publicPrefix;
     private final AvatarService avatars;
+    /**
+     * 文件存储不可用（未部署对象存储）时的兜底：把封面留在内存里。
+     * 只在当前进程有效，重启后重新预热；总比模板列表全是空卡片好。
+     */
+    private final Map<String, byte[]> memoryCovers = java.util.Collections.synchronizedMap(
+            new LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, byte[]> eldest) {
+                    // 单张封面通常 50–200KB，限 32 张足够覆盖内置模板和常用自定义模板。
+                    return size() > 32;
+                }
+            });
 
     public TemplateService(PluginDocumentStore documents, PluginFileStore files, RenderSupport render,
                            String publicPrefix, AvatarService avatars) {
@@ -187,6 +199,30 @@ public class TemplateService {
     }
 
     /**
+     * 启动预热内置模板封面。
+     *
+     * <p>封面来自第一次渲染的缓存，模板列表在没人点过「渲染」之前会全是空白卡片。
+     * 这里在后台线程里把缺封面的内置模板各渲染一次；渲染服务不可用时静默跳过，
+     * 等用户真正点渲染再补。</p>
+     */
+    public void warmCovers() {
+        Thread thread = new Thread(() -> {
+            for (ImageTemplate template : BuiltinTemplates.all()) {
+                if (cachedPreview(template.id()).isPresent()) {
+                    continue;
+                }
+                try {
+                    render(template.id(), Map.of());
+                } catch (RuntimeException ignored) {
+                    // 渲染能力未启用时保持空白封面，不阻塞插件启动。
+                }
+            }
+        }, "qqrobot-cover-warmup");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    /**
      * 服务端上报的玩家名很多，逐个让服务端插件下载头像不现实。这里统一补齐：
      * 任何带 {@code name} 且没有 {@code avatar} 的行自动取正版头像；变量里有
      * {@code player} 时补 {@code skin}。取不到就留空，模板里会隐藏。
@@ -227,6 +263,10 @@ public class TemplateService {
     }
 
     public Optional<byte[]> cachedPreview(String id) {
+        byte[] memory = memoryCovers.get(id);
+        if (memory != null && memory.length > 0) {
+            return Optional.of(memory);
+        }
         try {
             PluginStoredFile file = files.get(COVER_PREFIX + id + "-preview.png");
             if (file == null || file.inputStream() == null) {
@@ -240,6 +280,7 @@ public class TemplateService {
     }
 
     private void cachePreview(String id, PluginRenderedImage image) {
+        memoryCovers.put(id, image.content());
         try {
             files.put(COVER_PREFIX + id + "-preview.png", new ByteArrayInputStream(image.content()),
                     image.content().length, "image/png");

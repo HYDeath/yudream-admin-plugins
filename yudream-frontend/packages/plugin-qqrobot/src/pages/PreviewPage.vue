@@ -35,7 +35,7 @@ onMounted(check)
 
 <template>
   <div class="qqrobot-page">
-    <YdPageHeader title="渲染预览" description="复用后台「消息渲染」能力出图：物品卡片、背包与潜影盒，不依赖服务端连接">
+    <YdPageHeader title="渲染预览" description="复用后台「消息渲染」能力出图：背包、容器与物品卡，不依赖服务端连接">
       <template #actions>
         <YdButton variant="outline" :loading="loading || checking" @click="refresh">重新渲染</YdButton>
       </template>
@@ -54,10 +54,18 @@ onMounted(check)
         这是合成背包的预览：主存储 27 格、快捷栏 9 格、护甲 4 格与副手；包含附魔光效、耐久条和潜影盒展开。
         真实背包的图标由服务端从资源包（含 CraftEngine）提取后随快照上报。
       </p>
+      <p class="qqrobot-muted">
+        容器预览对齐玩家指令：`/末影箱` 与 `/潜影盒 [序号]` 只上报容器，不铺背包网格；
+        背包里有几个潜影盒就渲染几块，标题带来源槽位（如「背包 6」）方便对上号。
+      </p>
       <div class="qqrobot-preview-grid" :class="{ 'is-blocked': status && !status.ready }">
         <figure class="qqrobot-preview-card">
           <figcaption>背包渲染模型</figcaption>
           <img :src="url('inventory.png')" alt="背包渲染预览" @load="settled" @error="broken">
+        </figure>
+        <figure class="qqrobot-preview-card">
+          <figcaption>末影箱 + 多潜影盒</figcaption>
+          <img :src="url('containers.png')" alt="容器渲染预览" @load="settled" @error="broken">
         </figure>
         <figure class="qqrobot-preview-card">
           <figcaption>单物品提示卡</figcaption>

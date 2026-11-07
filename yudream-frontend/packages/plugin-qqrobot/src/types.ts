@@ -18,6 +18,30 @@ export interface BindSettings {
   unbindFailMessage: string
 }
 
+export interface QqBotSettings {
+  enabled: boolean
+  appId: string
+  secretRef: string
+  webhookPath: string
+  apiBase: string
+  sandbox: boolean
+  replyToFriendAdd: boolean
+  replyToGroupAdd: boolean
+  friendAddMessage: string
+  groupAddMessage: string
+  verifySignature: boolean
+  secretConfigured: boolean
+  publicKeyConfigured: boolean
+}
+
+export interface QqBotTestResult {
+  ok: boolean
+  message: string
+  appId?: string
+  apiBase?: string
+  webhookPath?: string
+}
+
 export interface GroupSettings {
   groupId: string
   displayName: string
@@ -152,6 +176,24 @@ export function emptyBindSettings(): BindSettings {
     bindFailMessage: '&8[&c!&8] &c绑定失败：#why',
     unbindSuccessMessage: '&8[&a!&8] &f已解除绑定。',
     unbindFailMessage: '&8[&c!&8] &c解绑失败：#why',
+  }
+}
+
+export function emptyBotSettings(): QqBotSettings {
+  return {
+    enabled: false,
+    appId: '',
+    secretRef: 'qq-bot-secret',
+    webhookPath: '/api/plugins/qqrobot/qq/webhook',
+    apiBase: 'https://api.sgroup.qq.com',
+    sandbox: true,
+    replyToFriendAdd: true,
+    replyToGroupAdd: true,
+    friendAddMessage: '你好，我是服务器助手。发送「绑定 游戏ID」即可获取进服验证码。',
+    groupAddMessage: '机器人已加入本群，绑定相关问题可以在群里直接问我。',
+    verifySignature: true,
+    secretConfigured: false,
+    publicKeyConfigured: false,
   }
 }
 

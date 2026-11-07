@@ -3,6 +3,7 @@ package online.yudream.plugin.qqrobot.application.service;
 import online.yudream.base.plugin.spi.system.storage.PluginDocumentStore;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
 import online.yudream.plugin.qqrobot.domain.GroupSettings;
+import online.yudream.plugin.qqrobot.domain.QqBotSettings;
 
 import java.util.List;
 
@@ -10,6 +11,7 @@ public class SettingsService {
     private static final String COLLECTION = "qqrobot-settings";
     private static final String BIND_ID = "bind";
     private static final String GROUP_PREFIX = "group:";
+    private static final String BOT_ID = "qqbot";
 
     private final PluginDocumentStore documents;
 
@@ -40,6 +42,24 @@ public class SettingsService {
         return documents.findById(COLLECTION, GROUP_PREFIX + groupId)
                 .map(GroupSettings::fromDocument)
                 .orElseGet(() -> GroupSettings.defaults(groupId));
+    }
+
+    public QqBotSettings botSettings() {
+        return documents.findById(COLLECTION, BOT_ID)
+                .map(QqBotSettings::fromDocument)
+                .orElseGet(QqBotSettings::defaults);
+    }
+
+    public QqBotSettings saveBotSettings(QqBotSettings settings) {
+        if (settings == null) {
+            throw QqRobotException.badRequest("机器人设置不能为空");
+        }
+        QqBotSettings normalized = settings.normalized();
+        if (normalized.enabled() && normalized.appId().isBlank()) {
+            throw QqRobotException.badRequest("启用机器人前必须填写 AppID");
+        }
+        documents.save(COLLECTION, BOT_ID, normalized.toDocument());
+        return normalized;
     }
 
     public GroupSettings saveGroup(GroupSettings settings) {

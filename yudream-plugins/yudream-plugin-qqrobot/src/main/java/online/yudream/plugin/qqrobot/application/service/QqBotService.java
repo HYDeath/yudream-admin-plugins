@@ -2,9 +2,11 @@ package online.yudream.plugin.qqrobot.application.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
+import online.yudream.plugin.qqrobot.domain.QqBotSettings;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * QQ 官方机器人事件处理。
@@ -27,13 +29,22 @@ public class QqBotService {
     private final BindCodeService codes;
     private final NoticeService notices;
     private final TemplateService templates;
+    private final SecretReader secrets;
+    private final QqApiClient api;
 
     public QqBotService(SettingsService settings, BindCodeService codes, NoticeService notices,
                         TemplateService templates) {
+        this(settings, codes, notices, templates, name -> Optional.empty(), new QqApiClient());
+    }
+
+    public QqBotService(SettingsService settings, BindCodeService codes, NoticeService notices,
+                        TemplateService templates, SecretReader secrets, QqApiClient api) {
         this.settings = settings;
         this.codes = codes;
         this.notices = notices;
         this.templates = templates;
+        this.secrets = secrets == null ? name -> Optional.empty() : secrets;
+        this.api = api == null ? new QqApiClient() : api;
     }
 
     /**
@@ -47,24 +58,49 @@ public class QqBotService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("event", type);
         result.put("openid", openid);
+        QqBotSettings bot = settings.botSettings();
+        if (!bot.enabled()) {
+            result.put("ignored", "机器人未启用");
+            result.put("reply", "");
+            return result;
+        }
         BindSettings bind = settings.bindSettings();
         switch (type) {
             case FRIEND_ADD -> {
                 // 好友添加：告知绑定方式，并把当前可用前缀带出去，避免用户记错关键字。
                 String prefix = bind.commonPrefix().isBlank() ? "" : "（前缀 " + bind.commonPrefix() + "）";
-                result.put("reply", "欢迎添加机器人" + prefix + "。发送「" + bind.bindKeyword()
-                        + " 游戏ID」获取验证码，进服后在聊天栏输入即可完成绑定。");
+                String reply = bot.replyToFriendAdd() ? bot.friendAddMessage() : "";
+                if (reply.isBlank()) {
+                    reply = "欢迎添加机器人" + prefix + "。发送「" + bind.bindKeyword()
+                            + " 游戏ID」获取验证码，进服后在聊天栏输入即可完成绑定。";
+                }
+                result.put("reply", reply);
                 result.put("scene", event.path("scene").asInt(0));
                 notices.publish("info", "QQ 好友接入", "openid " + mask(openid) + " 添加了机器人。");
             }
             case GROUP_ADD_ROBOT -> {
-                result.put("reply", "机器人已被添加到群 " + event.path("group_openid").asText("") + "。");
+                result.put("reply", bot.replyToGroupAdd() ? bot.groupAddMessage() : "");
                 notices.publish("info", "QQ 群接入", "群 " + event.path("group_openid").asText("") + " 添加了机器人。");
             }
-            case C2C_MESSAGE_CREATE -> result.put("reply", message(event, bind, openid));
+            case C2C_MESSAGE_CREATE -> {
+                String reply = message(event, bind, openid);
+                result.put("reply", reply);
+                if (!reply.isBlank()) {
+                    result.put("delivered", deliver(bot, openid, reply, event.path("id").asText("")).toView());
+                }
+            }
             default -> result.put("reply", "");
         }
         return result;
+    }
+
+    /** 被动回复：带 msg_id 走官方接口；失败只体现在返回值里，不影响事件本身。 */
+    private QqApiClient.Result deliver(QqBotSettings bot, String openid, String reply, String msgId) {
+        String secret = secrets.read(bot.appSecretRef()).orElse("");
+        if (secret.isBlank()) {
+            return new QqApiClient.Result(false, 0, "", "未配置 AppSecret", "");
+        }
+        return api.sendC2c(bot.appId(), secret, bot.apiBase(), openid, reply, msgId);
     }
 
     private String message(JsonNode event, BindSettings bind, String openid) {
@@ -113,5 +149,11 @@ public class QqBotService {
             return value == null ? "" : value;
         }
         return value.substring(0, 4) + "…" + value.substring(value.length() - 4);
+    }
+
+    /** 供上层读取机器人密钥（AppSecret）；缺省实现返回空，便于单测。 */
+    @FunctionalInterface
+    public interface SecretReader {
+        Optional<String> read(String name);
     }
 }

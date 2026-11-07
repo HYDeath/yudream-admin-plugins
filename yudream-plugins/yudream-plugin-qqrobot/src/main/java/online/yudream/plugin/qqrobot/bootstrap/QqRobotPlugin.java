@@ -89,14 +89,26 @@ public class QqRobotPlugin implements YuDreamPlugin {
         TemplateService templates = new TemplateService(context.documents(), context.files(), render,
                 "/api/plugins/qqrobot/templates", avatars);
         templates.seedDefaults();
+        // 模板列表在首次渲染前没有封面，启动时后台补一遍，避免市场里是空卡片。
+        templates.warmCovers();
 
         // QQ 官方机器人事件回调（好友添加/群添加/消息）：生成绑定码或以图片回复。
-        QqBotService qqBot = new QqBotService(settings, codes, notices, templates);
-        context.registerHttpController(new QqBotController(qqBot));
+        QqBotService.SecretReader secretReader = name -> {
+            try {
+                return context.secrets().get(name)
+                        .map(bytes -> new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+                        .filter(value -> !value.isBlank());
+            } catch (RuntimeException exception) {
+                return java.util.Optional.empty();
+            }
+        };
+        QqBotService qqBot = new QqBotService(settings, codes, notices, templates, secretReader,
+                new online.yudream.plugin.qqrobot.application.service.QqApiClient());
+        context.registerHttpController(new QqBotController(qqBot, settings, secretReader));
 
         context.registerHttpController(new QqRobotController(
                 new QqRobotHttpFacade(settings, bindings, codes, groups, resources, bridge, preview, render, notices,
-                        templates)));
+                        templates, context.secrets())));
         context.registerWebSocketHandler(BridgeHub.PATH, new BridgeHandler(bridge));
     }
 
