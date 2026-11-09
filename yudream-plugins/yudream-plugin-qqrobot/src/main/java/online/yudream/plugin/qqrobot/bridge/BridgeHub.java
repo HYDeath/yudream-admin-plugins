@@ -12,6 +12,7 @@ import online.yudream.plugin.qqrobot.application.service.GroupService;
 import online.yudream.plugin.qqrobot.application.service.ItemCardRenderer;
 import online.yudream.plugin.qqrobot.application.service.SettingsService;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
+import online.yudream.plugin.qqrobot.domain.BindingRecord;
 import online.yudream.plugin.qqrobot.domain.ContainerView;
 import online.yudream.plugin.qqrobot.domain.ItemView;
 
@@ -174,9 +175,19 @@ public class BridgeHub {
                 "heartbeatSeconds", 25,
                 "protocol", 1
         )));
+        syncCommands(session);
         // 服务端接入/重连是不可见的运维事件，写入短期通知，便于其他程序确认桥接已生效。
         notice.accept("桥接|服务端已接入：" + session.serverName() + "（" + session.serverId() + "），令牌 "
                 + fingerprint(bridgeToken()) + "。");
+    }
+
+    /** 服务端刚接入时补一次指令同步，避免它停在 config.yml 的旧触发词上。 */
+    private void syncCommands(BridgeSession session) {
+        var commands = settings.commandSettings().commands().stream()
+                .filter(command -> command.enabled() && command.supports("game"))
+                .map(command -> Map.of("action", command.action(), "triggers", command.triggers()))
+                .toList();
+        write(session, frame("commands.sync", Map.of("commands", commands, "chatTriggerEnabled", true)));
     }
 
     public void close(String sessionId) {
@@ -206,12 +217,66 @@ public class BridgeHub {
                 case "player.quit" -> handleQuit(session, data);
                 case "player.card" -> handleCard(session, data);
                 case "inventory.render" -> handleInventory(session, requestId, data);
+                case "inventory.error" -> handleInventoryError(requestId, data);
+                case "papi.result" -> handlePapiResult(requestId, data);
                 default -> write(session, error(requestId, "未知的桥接消息类型：" + type));
             }
         } catch (QqRobotException exception) {
             write(session, error(null, exception.getMessage()));
         } catch (Exception exception) {
             write(session, error(null, "桥接消息处理失败：" + exception.getMessage()));
+        }
+    }
+
+    /** 服务端找不到在线玩家等失败：把错误交给等待方，避免请求一直挂到超时。 */
+    private void handleInventoryError(String requestId, JsonNode data) {
+        String id = requestId.isBlank() ? text(data, "requestId") : requestId;
+        CompletableFuture<JsonNode> future = id.isBlank() ? null : pending.remove(id);
+        if (future != null) {
+            ObjectNode result = mapper.createObjectNode();
+            result.put("ok", false);
+            result.put("message", text(data, "message"));
+            future.complete(result);
+        }
+    }
+
+    /**
+     * 后台向服务端查询 PlaceholderAPI 占位符，用于模板变量联动。
+     * 返回 {@code placeholder → 值}；未安装 PAPI 时值为空串。
+     */
+    public Map<String, String> queryPlaceholders(String player, List<String> placeholders, long timeoutMillis) {
+        Map<String, String> empty = Map.of();
+        if (player == null || player.isBlank() || placeholders == null || placeholders.isEmpty()
+                || sessions.isEmpty()) {
+            return empty;
+        }
+        String requestId = java.util.UUID.randomUUID().toString();
+        CompletableFuture<JsonNode> future = new CompletableFuture<>();
+        pending.put(requestId, future);
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("requestId", requestId);
+        data.put("player", player);
+        data.put("placeholders", placeholders);
+        // 广播给所有服务端：只有玩家所在的那台会返回非空值，其它返回空表。
+        broadcast("papi.query", data);
+        try {
+            JsonNode result = future.get(Math.max(1000, timeoutMillis), java.util.concurrent.TimeUnit.MILLISECONDS);
+            Map<String, String> values = new java.util.LinkedHashMap<>();
+            result.path("values").fields().forEachRemaining(entry ->
+                    values.put(entry.getKey(), entry.getValue().asText("")));
+            return values;
+        } catch (Exception exception) {
+            return empty;
+        } finally {
+            pending.remove(requestId);
+        }
+    }
+
+    private void handlePapiResult(String requestId, JsonNode data) {
+        String id = requestId.isBlank() ? text(data, "requestId") : requestId;
+        CompletableFuture<JsonNode> future = id.isBlank() ? null : pending.remove(id);
+        if (future != null) {
+            future.complete(data);
         }
     }
 
@@ -295,14 +360,37 @@ public class BridgeHub {
             return;
         }
         try {
-            var record = bindings.bind(socialId, socialName, player, session.serverId());
+            var record = bindings.bind(socialId, socialName, player, session.serverId(),
+                    value.groupId(), value.connectionId());
             write(session, frame("bind.result", Map.of("requestId", nullToEmpty(requestId), "success", true,
                     "player", record.playerName(), "socialId", record.socialId(),
                     "message", renderMessage(settings.bindSettings().bindSuccessMessage(), record.socialId(), player))));
+            runBindCommands(session, record.playerName(), record.socialId(), record.socialName());
+            if (groups != null && settings.bindSettings().renameOnBindSuccess()) {
+                groups.syncCard(record.connectionId(), record.groupId(), record.socialId(), "", Map.of(), bindings, true);
+            }
         } catch (QqRobotException exception) {
             write(session, frame("bind.result", Map.of("requestId", nullToEmpty(requestId), "success", false,
                     "message", renderMessage(settings.bindSettings().bindFailMessage(), socialId, player)
                             .replace("#why", exception.getMessage()))));
+        }
+    }
+
+    /**
+     * 绑定成功联动命令：后台配置里每行一条，{@code $player/$account/$name}
+     * 由服务端替换后以控制台身份执行。只在绑定的那台服务器上跑，避免多服重复发奖。
+     */
+    private void runBindCommands(BridgeSession session, String player, String socialId, String socialName) {
+        for (String command : settings.bindSettings().bindSuccessCommands()) {
+            if (command == null || command.isBlank()) {
+                continue;
+            }
+            Map<String, Object> data = new java.util.LinkedHashMap<>();
+            data.put("command", command);
+            data.put("player", player);
+            data.put("socialId", socialId);
+            data.put("socialName", socialName);
+            write(session, frame("command.run", data));
         }
     }
 
@@ -315,7 +403,12 @@ public class BridgeHub {
         }
         String socialId = text(data, "socialId");
         String player = text(data, "player");
+        var previous = bindings.find(socialId, player);
         boolean removed = bindings.unbind(socialId, player);
+        if (removed && previous.isPresent() && groups != null && settings.bindSettings().renameOnBindSuccess()) {
+            BindingRecord record = previous.get();
+            groups.syncCard(record.connectionId(), record.groupId(), record.socialId(), "", Map.of(), bindings, true);
+        }
         write(session, frame("bind.result", Map.of("requestId", nullToEmpty(requestId), "success", removed,
                 "message", renderMessage(removed ? current.unbindSuccessMessage() : current.unbindFailMessage(),
                 socialId, player).replace("#why", removed ? "" : "未找到绑定记录"))));
@@ -376,11 +469,70 @@ public class BridgeHub {
                 write(session, error(requestId, "物品渲染失败"));
                 return;
             }
-            write(session, frame("inventory.rendered", Map.of(
-                    "requestId", nullToEmpty(requestId),
-                    "image", "base64://" + Base64.getEncoder().encodeToString(image.content())
-            )));
+            String frameRequestId = requestId.isBlank() ? text(data, "requestId") : requestId;
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("requestId", nullToEmpty(frameRequestId));
+            payload.put("image", "base64://" + Base64.getEncoder().encodeToString(image.content()));
+            payload.put("title", title);
+            write(session, frame("inventory.rendered", payload));
+            // 后台主动发起的请求：唤醒等待方，由 QQ 侧直接发图。
+            CompletableFuture<JsonNode> waiting = frameRequestId.isBlank() ? null : pending.remove(frameRequestId);
+            if (waiting != null) {
+                ObjectNode result = mapper.createObjectNode();
+                result.put("ok", true);
+                result.put("title", title);
+                result.put("image", "base64://" + Base64.getEncoder().encodeToString(image.content()));
+                waiting.complete(result);
+            }
         });
+    }
+
+    /**
+     * 后台主动向服务端要一份容器快照（玩家在 QQ 里发「背包」「潜影盒 2」）。
+     *
+     * <p>与服务端主动上报的 {@code inventory.render} 走同一条渲染管线，
+     * 区别只是数据来源：这里由后台发起、等待某一台服务器上的在线玩家数据。
+     * 玩家不在已连接的服务端时返回空 Optional，由调用方回一句提示。</p>
+     *
+     * @param action {@code inventory} / {@code ender_chest} / {@code shulker}
+     * @param index  潜影盒序号，0 表示全部
+     */
+    public Optional<PendingRender> requestContainer(String player, String action, int index) {
+        String type = switch (action) {
+            case "inventory" -> "inventory";
+            case "ender_chest" -> "ender_chest";
+            case "shulker" -> "shulker";
+            default -> "";
+        };
+        if (type.isBlank() || player == null || player.isBlank()) {
+            return Optional.empty();
+        }
+        for (BridgeSession session : sessions.values()) {
+            Map<String, Object> data = new java.util.LinkedHashMap<>();
+            data.put("player", player);
+            data.put("type", type);
+            data.put("index", index);
+            String requestId = java.util.UUID.randomUUID().toString();
+            CompletableFuture<JsonNode> future = new CompletableFuture<>();
+            pending.put(requestId, future);
+            write(session, frame("inventory.request", withRequestId(data, requestId)));
+            return Optional.of(new PendingRender(requestId, session.serverName(), future));
+        }
+        return Optional.empty();
+    }
+
+    public Optional<PendingRender> requestContainer(String player, String action) {
+        return requestContainer(player, action, 0);
+    }
+
+    private static Map<String, Object> withRequestId(Map<String, Object> data, String requestId) {
+        Map<String, Object> value = new java.util.LinkedHashMap<>(data);
+        value.put("requestId", requestId);
+        return value;
+    }
+
+    /** 等待服务端返回图片字节；超时由调用方决定回什么文案。 */
+    public record PendingRender(String requestId, String serverName, CompletableFuture<JsonNode> future) {
     }
 
     private ItemView readItem(JsonNode node) {

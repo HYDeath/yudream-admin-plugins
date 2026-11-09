@@ -165,8 +165,27 @@ onMounted(() => {
         <span class="qqrobot-muted">{{ renderStatus.hint }}</span>
       </div>
       <YdLoadingOverlay :loading="loading">
-        <div v-if="!cards.length" class="qqrobot-empty">
-          <YdEmpty description="还没有资源，新增后会在这里以卡片形式展示。" />
+        <div v-if="!cards.length" class="qqrobot-doc-section qqrobot-market-blank">
+          <YdEmpty description="还没有资源。新增后可自动生成卡片图，群聊里直接发图即可。">
+            <template #image>
+              <div class="qqrobot-market-blank-icon"><span class="i-ri:store-3-line" /></div>
+            </template>
+            <YdButton @click="openCreate">新增第一个资源</YdButton>
+          </YdEmpty>
+          <div class="qqrobot-market-hints">
+            <div>
+              <strong>封面自动渲染</strong>
+              <span>填好标题、平台与标签，后台用统一卡片模板出图，不需要自己作图。</span>
+            </div>
+            <div>
+              <strong>支持 CE 资源包</strong>
+              <span>卡片内展示物品图标时，会按 CraftEngine 的模型路径解析材质。</span>
+            </div>
+            <div>
+              <strong>群内直接发图</strong>
+              <span>卡片接口公开只读，可直接作为图片消息链接发给 QQ 群或放进图片模板引用。</span>
+            </div>
+          </div>
         </div>
         <div v-else class="qqrobot-market-grid">
           <article v-for="card in cards" :key="card.id" class="qqrobot-market-card">

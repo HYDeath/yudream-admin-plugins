@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
-import java.util.Base64;
 import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -84,6 +83,6 @@ class QqSignatureVerifierTest {
         Signature signer = Signature.getInstance("Ed25519");
         signer.initSign(pair.getPrivate());
         signer.update((timestamp + body).getBytes(StandardCharsets.UTF_8));
-        return Base64.getEncoder().encodeToString(signer.sign());
+        return HexFormat.of().formatHex(signer.sign());
     }
 }

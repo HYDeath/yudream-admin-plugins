@@ -18,11 +18,22 @@ const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
 const loading = ref(true)
 const state = ref<BridgeState>({ servers: [], token: '', pendingBindings: 0 })
-const kicking = ref('')
 const kickMessage = ref('请先绑定社交账号')
 const notices = ref<QqRobotNotice[]>([])
+const noticesOpen = ref(false)
+const kickTarget = ref<Record<string, string>>({})
 
 const servers = computed(() => state.value.servers ?? [])
+const dedupedNotices = computed(() => {
+  const seen = new Map<string, QqRobotNotice>()
+  for (const notice of notices.value) {
+    const key = `${notice.title}|${notice.message}`
+    const current = seen.get(key)
+    if (!current || new Date(notice.createdAt) > new Date(current.createdAt))
+      seen.set(key, notice)
+  }
+  return Array.from(seen.values()).slice(0, 6)
+})
 
 async function load() {
   loading.value = true
@@ -51,12 +62,13 @@ async function rotate() {
 }
 
 async function kick(server: BridgeServer) {
-  if (!kicking.value.trim()) {
+  const player = (kickTarget.value[server.sessionId] ?? '').trim()
+  if (!player) {
     toast.error('请输入玩家名')
     return
   }
   try {
-    const result = await api.kick(server.serverId, kicking.value.trim(), kickMessage.value)
+    const result = await api.kick(server.serverId, player, kickMessage.value)
     toast[result.sent ? 'success' : 'error'](result.sent ? '已发送踢出指令' : '服务器未连接')
   }
   catch (error) {
@@ -84,13 +96,23 @@ onMounted(load)
     </YdPageHeader>
     <div class="qqrobot-body">
       <YdLoadingOverlay :loading="loading">
-        <div v-for="notice in notices" :key="notice.id" class="qqrobot-render-bar bad">
-          <div class="qqrobot-render-main">
-            <span class="qqrobot-render-dot" />
-            <strong>{{ notice.title }}</strong>
-            <span class="qqrobot-muted">{{ relative(notice.createdAt) }}</span>
+        <div v-if="dedupedNotices.length" class="qqrobot-notice">
+          <button type="button" class="qqrobot-notice-head" @click="noticesOpen = !noticesOpen">
+            <span class="qqrobot-notice-dot" />
+            <strong>{{ dedupedNotices[0].title }}</strong>
+            <span class="qqrobot-muted">{{ dedupedNotices[0].message }}</span>
+            <span class="qqrobot-notice-more">
+              {{ dedupedNotices.length > 1 ? `共 ${dedupedNotices.length} 条` : '' }}
+              {{ noticesOpen ? '收起' : '查看' }}
+            </span>
+          </button>
+          <div v-if="noticesOpen" class="qqrobot-notice-list">
+            <div v-for="notice in dedupedNotices" :key="notice.id" class="qqrobot-notice-item">
+              <strong>{{ notice.title }}</strong>
+              <span class="qqrobot-muted">{{ relative(notice.createdAt) }}</span>
+              <p class="qqrobot-muted">{{ notice.message }}</p>
+            </div>
           </div>
-          <span class="qqrobot-muted">{{ notice.message }}</span>
         </div>
         <section class="qqrobot-bridge-token">
           <div>
@@ -129,7 +151,8 @@ onMounted(load)
               <div><strong>{{ server.packTextures ?? 0 }}</strong><span>纹理</span></div>
             </div>
             <div class="qqrobot-bridge-kick">
-              <YdInput v-model="kicking" placeholder="玩家名" />
+              <YdInput :model-value="kickTarget[server.sessionId] ?? ''" placeholder="玩家名"
+                @update:model-value="kickTarget = { ...kickTarget, [server.sessionId]: String($event ?? '') }" />
               <YdInput v-model="kickMessage" placeholder="踢出原因" />
               <YdButton variant="outline" size="sm" @click="kick(server)">踢出</YdButton>
             </div>

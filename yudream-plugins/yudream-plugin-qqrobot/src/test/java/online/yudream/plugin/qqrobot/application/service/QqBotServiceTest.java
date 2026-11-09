@@ -1,6 +1,7 @@
 package online.yudream.plugin.qqrobot.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import online.yudream.base.plugin.spi.system.messaging.PluginEvent;
 import online.yudream.base.plugin.spi.system.storage.PluginDocumentStore;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
 import online.yudream.plugin.qqrobot.domain.QqBotSettings;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QqBotServiceTest {
@@ -72,7 +74,7 @@ class QqBotServiceTest {
     @Test
     void privateMessageIssuesBindCode() throws Exception {
         settings.saveBindSettings(new BindSettings("dual", List.of(), 2, 5, 4, false,
-                true, true, "", "numeric", "绑定", "解绑", "", "", "", "", ""));
+                true, true, "", "numeric", "绑定", "解绑", "", "", "", "", "", List.of()));
         Map<String, Object> result = bot.handle(mapper.readTree("""
                 {"t":"C2C_MESSAGE_CREATE","openid":"OPENID-1","content":"绑定 Steve"}
                 """));
@@ -93,6 +95,53 @@ class QqBotServiceTest {
     void openidMaskKeepsBothEnds() {
         assertEquals("", QqBotService.mask(""));
         assertEquals("ABC", QqBotService.mask("ABC"));
+    }
+
+    @Test
+    void myInventoryUsesBoundPlayerWithoutName() throws Exception {
+        BindingService bindings = new BindingService(store, settings);
+        bindings.bind("OPENID-BOUND", "小明", "Steve", "survival-a");
+        QqBotService bound = new QqBotService(settings, codes, notices, null, bindings,
+                name -> Optional.empty(), new QqApiClient());
+
+        Map<String, Object> result = bound.handle(mapper.readTree("""
+                {"t":"C2C_MESSAGE_CREATE","openid":"OPENID-BOUND","content":"我的背包"}
+                """));
+
+        String reply = String.valueOf(result.get("reply"));
+        // 没有桥接时回桥接未就绪；关键是它没有要求再带玩家名。
+        assertTrue(reply.contains("桥接") || reply.contains("Steve"), reply);
+        assertFalse(reply.contains("请发送「背包 玩家ID"), reply);
+    }
+
+    @Test
+    void myInventoryWithoutBindingAsksToBind() throws Exception {
+        BindingService bindings = new BindingService(store, settings);
+        QqBotService bound = new QqBotService(settings, codes, notices, null, bindings,
+                name -> Optional.empty(), new QqApiClient());
+
+        Map<String, Object> result = bound.handle(mapper.readTree("""
+                {"t":"C2C_MESSAGE_CREATE","openid":"OPENID-NONE","content":"我的背包"}
+                """));
+
+        assertTrue(String.valueOf(result.get("reply")).contains("绑定"));
+    }
+
+    @Test
+    void groupMemberLeaveCanUnbindAllAccounts() {
+        settings.saveBindSettings(new BindSettings("dual", List.of(), 3, 5, 4, true,
+                true, false, "", "numeric", "绑定", "解绑", "", "", "", "", "", List.of(),
+                true, true, true, true, true, true, List.of()));
+        BindingService bound = new BindingService(store, settings);
+        bound.bind("OPENID-LEAVE", "User", "Steve", "survival");
+        bound.bind("OPENID-LEAVE", "User", "Alex", "survival");
+        QqBotService service = new QqBotService(settings, codes, notices, null, bound,
+                name -> Optional.empty(), new QqApiClient());
+        service.onEvent(new PluginEvent("1", "group_member_decrease", "milky", "OPENID-LEAVE", "group-1",
+                null, null, null, Map.of(), "group_member_decrease",
+                Map.of("group_id", "group-1", "user_id", "OPENID-LEAVE"), "connection-1", "bot-1", "event-1"));
+
+        assertTrue(bound.bySocial("OPENID-LEAVE", 1, 20).isEmpty());
     }
 
     private static final class MemoryStore implements PluginDocumentStore {

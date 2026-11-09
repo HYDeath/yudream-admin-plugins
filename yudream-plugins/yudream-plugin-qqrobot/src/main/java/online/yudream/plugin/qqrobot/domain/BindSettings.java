@@ -24,10 +24,30 @@ public record BindSettings(
         String bindSuccessMessage,
         String bindFailMessage,
         String unbindSuccessMessage,
-        String unbindFailMessage
+        String unbindFailMessage,
+        List<String> bindSuccessCommands,
+        boolean autoUnbindOnGroupLeave,
+        boolean renameOnBindSuccess,
+        boolean preventUserRename,
+        boolean ignoreAlreadyBoundName,
+        boolean ignoreGroupOwner,
+        boolean ignoreGroupAdmins,
+        List<String> ignoredPermissionGroups
 ) {
     public static final String MODE_DUAL = "dual";
     public static final String MODE_TRUST = "trust";
+
+    /** Backward-compatible constructor for stored/test configurations created before group rules existed. */
+    public BindSettings(String bindMode, List<String> forcedServers, int accountsPerSocial, int codeTtlMinutes,
+                        int codeLength, boolean allowUnbind, boolean noKeywordMode, boolean forbidChinese,
+                        String commonPrefix, String codeCharset, String bindKeyword, String unbindKeyword,
+                        String unboundKickMessage, String bindSuccessMessage, String bindFailMessage,
+                        String unbindSuccessMessage, String unbindFailMessage, List<String> bindSuccessCommands) {
+        this(bindMode, forcedServers, accountsPerSocial, codeTtlMinutes, codeLength, allowUnbind,
+                noKeywordMode, forbidChinese, commonPrefix, codeCharset, bindKeyword, unbindKeyword,
+                unboundKickMessage, bindSuccessMessage, bindFailMessage, unbindSuccessMessage,
+                unbindFailMessage, bindSuccessCommands, false, true, true, true, true, true, List.of());
+    }
 
     public static BindSettings defaults() {
         return new BindSettings(
@@ -47,7 +67,8 @@ public record BindSettings(
                 "&8[&a!&8] &f绑定 &a#account &f成功，欢迎进入服务器！",
                 "&8[&c!&8] &c绑定失败：#why",
                 "&8[&a!&8] &f已解除绑定。",
-                "&8[&c!&8] &c解绑失败：#why"
+                "&8[&c!&8] &c解绑失败：#why",
+                List.of()
         );
     }
 
@@ -67,7 +88,19 @@ public record BindSettings(
                 textOr(bindSuccessMessage, defaults().bindSuccessMessage()),
                 textOr(bindFailMessage, defaults().bindFailMessage()),
                 textOr(unbindSuccessMessage, defaults().unbindSuccessMessage()),
-                textOr(unbindFailMessage, defaults().unbindFailMessage())
+                textOr(unbindFailMessage, defaults().unbindFailMessage()),
+                bindSuccessCommands == null ? List.of() : bindSuccessCommands.stream()
+                        .filter(command -> command != null && !command.isBlank())
+                        .map(String::trim).limit(20).toList(),
+                autoUnbindOnGroupLeave,
+                renameOnBindSuccess,
+                preventUserRename,
+                ignoreAlreadyBoundName,
+                ignoreGroupOwner,
+                ignoreGroupAdmins,
+                ignoredPermissionGroups == null ? List.of() : ignoredPermissionGroups.stream()
+                        .filter(value -> value != null && !value.isBlank())
+                        .map(String::trim).distinct().limit(50).toList()
         );
     }
 
@@ -94,7 +127,15 @@ public record BindSettings(
                 Map.entry("bindSuccessMessage", value.bindSuccessMessage()),
                 Map.entry("bindFailMessage", value.bindFailMessage()),
                 Map.entry("unbindSuccessMessage", value.unbindSuccessMessage()),
-                Map.entry("unbindFailMessage", value.unbindFailMessage())
+                Map.entry("unbindFailMessage", value.unbindFailMessage()),
+                Map.entry("bindSuccessCommands", value.bindSuccessCommands()),
+                Map.entry("autoUnbindOnGroupLeave", value.autoUnbindOnGroupLeave()),
+                Map.entry("renameOnBindSuccess", value.renameOnBindSuccess()),
+                Map.entry("preventUserRename", value.preventUserRename()),
+                Map.entry("ignoreAlreadyBoundName", value.ignoreAlreadyBoundName()),
+                Map.entry("ignoreGroupOwner", value.ignoreGroupOwner()),
+                Map.entry("ignoreGroupAdmins", value.ignoreGroupAdmins()),
+                Map.entry("ignoredPermissionGroups", value.ignoredPermissionGroups())
         );
     }
 
@@ -120,7 +161,15 @@ public record BindSettings(
                 string(document, "bindSuccessMessage", base.bindSuccessMessage()),
                 string(document, "bindFailMessage", base.bindFailMessage()),
                 string(document, "unbindSuccessMessage", base.unbindSuccessMessage()),
-                string(document, "unbindFailMessage", base.unbindFailMessage())
+                string(document, "unbindFailMessage", base.unbindFailMessage()),
+                list(document, "bindSuccessCommands"),
+                bool(document, "autoUnbindOnGroupLeave", base.autoUnbindOnGroupLeave()),
+                bool(document, "renameOnBindSuccess", base.renameOnBindSuccess()),
+                bool(document, "preventUserRename", base.preventUserRename()),
+                bool(document, "ignoreAlreadyBoundName", base.ignoreAlreadyBoundName()),
+                bool(document, "ignoreGroupOwner", base.ignoreGroupOwner()),
+                bool(document, "ignoreGroupAdmins", base.ignoreGroupAdmins()),
+                list(document, "ignoredPermissionGroups")
         ).normalized();
     }
 

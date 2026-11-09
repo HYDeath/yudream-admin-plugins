@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import {
   YdButton,
-  YdCopyButton,
   YdInput,
   YdLoadingOverlay,
   YdPageHeader,
-  YdSelect,
-  YdSettingsLayout,
-  YdSettingsSection,
   YdSwitch,
   YdTextarea,
   useYdToast,
@@ -15,98 +11,102 @@ import {
 import type { YuDreamPluginSdk } from '@yudream/plugin-sdk'
 import { computed, onMounted, ref } from 'vue'
 import { createQqRobotApi } from '../api/qqrobot-api'
-import { emptyBotSettings, type QqBotSettings, type QqBotTestResult } from '../types'
+import type { BotConnectionState, QqIntegrationSettings } from '../types'
 
 const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
 const loading = ref(true)
 const saving = ref(false)
-const testing = ref(false)
-const draft = ref<QqBotSettings>(emptyBotSettings())
-const appSecret = ref('')
-const webhookPublicKey = ref('')
-const testResult = ref<QqBotTestResult | null>(null)
-const section = ref('access')
-
-const sections = [
-  { label: '基础接入', value: 'access', icon: 'i-ri:robot-2-line' },
-  { label: '回调与密钥', value: 'webhook', icon: 'i-ri:shield-keyhole-line' },
-  { label: '事件回复', value: 'events', icon: 'i-ri:chat-smile-2-line' },
-]
-
-const environmentOptions = [
-  { label: '沙箱环境', value: 'sandbox' },
-  { label: '正式环境', value: 'production' },
-]
-
-const callbackUrl = computed(() => {
-  const path = draft.value.webhookPath || ''
-  const origin = globalThis.location?.origin ?? ''
-  return path.startsWith('http') ? path : `${origin}${path}`
+const state = ref<BotConnectionState | null>(null)
+const integrations = ref<QqIntegrationSettings>({
+  registrationReviewEnabled: true,
+  requireApprovedForGroup: false,
+  registrationUrl: '/platform/plugins/registration-review',
+  providerAvailable: false,
+})
+const activeAnchor = ref('connections')
+const draft = ref({
+  replyEnabled: true,
+  replyToFriendAdd: true,
+  replyToGroupAdd: true,
+  friendAddMessage: '',
+  groupAddMessage: '',
 })
 
-const secretHint = computed(() => draft.value.secretConfigured
-  ? '已保存，留空表示不修改'
-  : '尚未配置，请填写开放平台的 AppSecret')
+const anchors = [
+  { id: 'connections', label: '消息连接' },
+  { id: 'replies', label: '欢迎语' },
+  { id: 'binding', label: '接入流程' },
+  { id: 'integrations', label: '插件联动' },
+]
+
+const connections = computed(() => state.value?.connections ?? [])
+const enabled = computed(() => connections.value.length > 0)
+const stateLabel = computed(() => {
+  if (!state.value) return '加载中'
+  if (state.value.state === 'unavailable') return 'QQ 消息平台未启用'
+  if (!connections.value.length) return '尚未配置连接'
+  return `${connections.value.length} 个连接在线`
+})
 
 async function load() {
   loading.value = true
   try {
-    draft.value = await api.botSettings()
-    appSecret.value = ''
-    webhookPublicKey.value = ''
-  }
-  catch (error) {
-    toast.error(String((error as Error)?.message ?? '加载机器人设置失败'))
-  }
-  finally {
+    state.value = await api.botConnections()
+    integrations.value = await api.integrationSettings()
+    draft.value = {
+      replyEnabled: state.value.replyEnabled,
+      replyToFriendAdd: state.value.replyToFriendAdd,
+      replyToGroupAdd: state.value.replyToGroupAdd,
+      friendAddMessage: state.value.friendAddMessage,
+      groupAddMessage: state.value.groupAddMessage,
+    }
+  } catch (error) {
+    toast.error(String((error as Error)?.message ?? '机器人接入状态加载失败'))
+  } finally {
     loading.value = false
   }
-}
-
-function setEnvironment(value: string) {
-  draft.value.sandbox = value === 'sandbox'
-  draft.value.apiBase = draft.value.sandbox
-    ? 'https://sandbox.api.sgroup.qq.com'
-    : 'https://api.sgroup.qq.com'
 }
 
 async function save() {
   saving.value = true
   try {
-    const payload = {
-      ...draft.value,
-      appSecret: appSecret.value.trim(),
-      webhookPublicKey: webhookPublicKey.value.trim(),
-    }
-    draft.value = await api.saveBotSettings(payload)
-    appSecret.value = ''
-    webhookPublicKey.value = ''
-    toast.success('机器人设置已保存')
-  }
-  catch (error) {
+    // 凭证不在这里：只把回复策略写回插件设置。
+    await api.saveBotSettings({
+      enabled: draft.value.replyEnabled,
+      appId: '',
+      secretRef: '',
+      webhookPath: '',
+      apiBase: '',
+      sandbox: false,
+      replyToFriendAdd: draft.value.replyToFriendAdd,
+      replyToGroupAdd: draft.value.replyToGroupAdd,
+      friendAddMessage: draft.value.friendAddMessage,
+      groupAddMessage: draft.value.groupAddMessage,
+      verifySignature: true,
+      secretConfigured: true,
+      publicKeyConfigured: true,
+    })
+    integrations.value = await api.saveIntegrationSettings(integrations.value)
+    toast.success('回复策略已保存')
+    await load()
+  } catch (error) {
     toast.error(String((error as Error)?.message ?? '保存失败'))
-  }
-  finally {
+  } finally {
     saving.value = false
   }
 }
 
-async function test() {
-  testing.value = true
-  testResult.value = null
-  try {
-    const result = await api.testBot()
-    testResult.value = result
-    toast[result.ok ? 'success' : 'error'](result.message)
-  }
-  catch (error) {
-    toast.error(String((error as Error)?.message ?? '测试失败'))
-  }
-  finally {
-    testing.value = false
-  }
+function jump(id: string) {
+  activeAnchor.value = id
+  document.getElementById(`qqrobot-anchor-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function protocolLabel(item: { official?: boolean, protocol?: string, platform?: string }) {
+  if (item.official || item.protocol === 'official') return '官方 QQ'
+  if (item.protocol === 'milky') return 'Milky'
+  return item.platform || '未知协议'
 }
 
 onMounted(load)
@@ -114,125 +114,153 @@ onMounted(load)
 
 <template>
   <div class="qqrobot-page">
-    <YdPageHeader title="机器人接入" description="QQ 开放平台机器人凭证、回调地址与事件回复策略">
+    <YdPageHeader title="机器人设置" description="登录连接由平台「QQ 消息平台」统一管理，这里只配置回复策略">
       <template #actions>
-        <YdButton variant="outline" :disabled="saving" @click="load">重置</YdButton>
-        <YdButton variant="outline" :loading="testing" @click="test">测试连接</YdButton>
+        <YdButton variant="outline" :loading="loading" @click="load">刷新状态</YdButton>
         <YdButton :loading="saving" @click="save">保存</YdButton>
       </template>
     </YdPageHeader>
     <div class="qqrobot-body">
       <YdLoadingOverlay :loading="loading">
-        <div
-          class="qqrobot-render-bar"
-          :class="draft.enabled ? 'ok' : 'bad'"
-        >
-          <div class="qqrobot-render-main">
-            <span class="qqrobot-render-dot" />
-            <strong>{{ draft.enabled ? '机器人已启用' : '机器人未启用' }}</strong>
-            <span class="qqrobot-muted">
-              {{ draft.enabled ? '收到的事件会被处理并回复' : '事件会被忽略，不会调用开放平台接口' }}
-            </span>
-          </div>
-          <span v-if="testResult" class="qqrobot-muted">{{ testResult.message }}</span>
-        </div>
-        <YdSettingsLayout v-model="section" :list="sections">
-          <YdSettingsSection v-if="section === 'access'" title="开放平台凭证" description="在 QQ 开放平台「机器人」页签获取">
-            <div class="qqrobot-grid">
-              <label class="qqrobot-field qqrobot-switch">
-                <span>启用机器人</span>
-                <YdSwitch v-model="draft.enabled" />
-              </label>
-              <label class="qqrobot-field">
-                <span>运行环境</span>
-                <YdSelect
-                  :model-value="draft.sandbox ? 'sandbox' : 'production'"
-                  :options="environmentOptions"
-                  @update:model-value="setEnvironment(String($event ?? 'sandbox'))"
-                />
-              </label>
-              <label class="qqrobot-field">
-                <span>AppID</span>
-                <YdInput v-model="draft.appId" placeholder="机器人 AppID" />
-              </label>
-              <label class="qqrobot-field">
-                <span>AppSecret</span>
-                <YdInput
-                  v-model="appSecret"
-                  type="password"
-                  :placeholder="secretHint"
-                  autocomplete="new-password"
-                />
-              </label>
-              <label class="qqrobot-field">
-                <span>接口地址</span>
-                <YdInput v-model="draft.apiBase" placeholder="https://api.sgroup.qq.com" />
-              </label>
-              <label class="qqrobot-field">
-                <span>密钥引用名</span>
-                <YdInput v-model="draft.secretRef" placeholder="qq-bot-secret" />
-              </label>
-            </div>
-            <p class="qqrobot-muted">
-              AppSecret 只写入插件密钥库，接口不会回显；密钥引用名用于在密钥库中区分多套机器人凭证。
-            </p>
-          </YdSettingsSection>
+        <div class="qqrobot-doc">
+          <nav class="qqrobot-doc-nav">
+            <button
+              v-for="item in anchors"
+              :key="item.id"
+              type="button"
+              class="qqrobot-doc-link"
+              :class="{ on: activeAnchor === item.id }"
+              @click="jump(item.id)"
+            >{{ item.label }}</button>
+          </nav>
 
-          <YdSettingsSection v-else-if="section === 'webhook'" title="回调与密钥" description="开放平台「回调配置」里填写的地址与校验材料">
-            <div class="qqrobot-grid">
-              <div class="qqrobot-field qqrobot-wide">
-                <span>回调地址</span>
-                <div class="qqrobot-bridge-token">
-                  <code>{{ callbackUrl }}</code>
-                  <YdCopyButton :text="callbackUrl" />
+          <div class="qqrobot-doc-body">
+            <div class="qqrobot-status-strip" :class="{ on: enabled }">
+              <span class="qqrobot-status-dot" />
+              <strong>{{ stateLabel }}</strong>
+              <span class="qqrobot-muted">{{ state?.capabilityName ?? 'QQ 消息平台' }}</span>
+              <a v-if="state" class="qqrobot-status-link" :href="state.managePath">管理连接</a>
+            </div>
+
+            <section id="qqrobot-anchor-connections" class="qqrobot-doc-section">
+              <header>
+                <h3>消息连接</h3>
+                <p>
+                  QQ 号登录、AppID / AppSecret、Webhook 与沙盒都配置在平台的「QQ 消息平台」里，
+                  本插件不再重复保存同一套凭证，避免两边互相覆盖。
+                </p>
+              </header>
+
+              <div v-if="state?.state === 'unavailable'" class="qqrobot-blocked">
+                <strong>QQ 消息平台能力未启用</strong>
+                <p>{{ state.message || '请先在「平台 → 能力目录 → QQ 消息平台」启用该能力。' }}</p>
+                <a :href="state.managePath">去启用</a>
+              </div>
+
+              <div v-else-if="!connections.length" class="qqrobot-blocked">
+                <strong>还没有可用的消息连接</strong>
+                <p>在「QQ 消息平台」新建连接：官方机器人填 AppID / AppSecret，Milky 填地址与 Access Token。</p>
+                <a :href="state?.managePath ?? '/platform/milky'">去新建连接</a>
+              </div>
+
+              <div v-else class="qqrobot-conn-list">
+                <div v-for="item in connections" :key="item.id" class="qqrobot-conn-row">
+                  <span class="qqrobot-conn-dot" />
+                  <div class="qqrobot-conn-main">
+                    <strong>{{ item.name }}</strong>
+                    <code>{{ item.id }}</code>
+                  </div>
+                  <span class="qqrobot-chip">{{ protocolLabel(item) }}</span>
+                  <span class="qqrobot-chip on">已启用</span>
                 </div>
               </div>
-              <label class="qqrobot-field">
-                <span>回调路径</span>
-                <YdInput v-model="draft.webhookPath" placeholder="/api/plugins/qqrobot/qq/webhook" />
-              </label>
-              <label class="qqrobot-field qqrobot-switch">
-                <span>校验回调签名</span>
-                <YdSwitch v-model="draft.verifySignature" />
-              </label>
-              <label class="qqrobot-field qqrobot-wide">
-                <span>回调公钥（Ed25519）</span>
-                <YdTextarea
-                  v-model="webhookPublicKey"
-                  :placeholder="draft.publicKeyConfigured ? '已保存，留空表示不修改' : '粘贴开放平台提供的公钥'"
-                />
-              </label>
-            </div>
-            <p class="qqrobot-muted">
-              签名校验使用 `X-Signature-Ed25519` 与 `X-Signature-Timestamp` 请求头，允许 5 分钟时钟漂移。
-              平台发起的回调地址验证（op=13）始终直接回显，不受开关影响。
-            </p>
-          </YdSettingsSection>
 
-          <YdSettingsSection v-else title="事件回复" description="好友添加与入群事件的自动欢迎语">
-            <div class="qqrobot-grid">
-              <label class="qqrobot-field qqrobot-switch">
-                <span>好友添加自动回复</span>
-                <YdSwitch v-model="draft.replyToFriendAdd" />
-              </label>
-              <label class="qqrobot-field qqrobot-switch">
-                <span>入群自动回复</span>
-                <YdSwitch v-model="draft.replyToGroupAdd" />
-              </label>
+              <div class="qqrobot-switch-list">
+                <label class="qqrobot-switch-row">
+                  <span><strong>启用机器人与指令回复</strong><small>关闭后收到的事件一律忽略，适合维护或切换账号时暂停</small></span>
+                  <YdSwitch v-model="draft.replyEnabled" />
+                </label>
+              </div>
+            </section>
+
+            <section id="qqrobot-anchor-replies" class="qqrobot-doc-section">
+              <header>
+                <h3>欢迎语</h3>
+                <p>好友添加与机器人入群时自动发送一次；留空则不回复</p>
+              </header>
+              <div class="qqrobot-switch-list">
+                <label class="qqrobot-switch-row">
+                  <span><strong>好友添加自动回复</strong><small>对方添加机器人好友后立刻私聊欢迎语</small></span>
+                  <YdSwitch v-model="draft.replyToFriendAdd" />
+                </label>
+                <label class="qqrobot-switch-row">
+                  <span><strong>入群自动回复</strong><small>机器人被拉进群后发送一次欢迎语</small></span>
+                  <YdSwitch v-model="draft.replyToGroupAdd" />
+                </label>
+              </div>
+              <div class="qqrobot-grid">
+                <label class="qqrobot-field qqrobot-wide">
+                  <span>好友添加欢迎语</span>
+                  <YdTextarea v-model="draft.friendAddMessage" :rows="3" />
+                </label>
+                <label class="qqrobot-field qqrobot-wide">
+                  <span>入群欢迎语</span>
+                  <YdTextarea v-model="draft.groupAddMessage" :rows="3" />
+                </label>
+              </div>
+            </section>
+
+            <section id="qqrobot-anchor-binding" class="qqrobot-doc-section">
+              <header>
+                <h3>接入流程</h3>
+                <p>从登录 QQ 到玩家完成绑定，一共三步</p>
+              </header>
+              <ol class="qqrobot-steps">
+                <li>
+                  <strong>在平台创建消息连接</strong>
+                  <span>
+                    官方机器人：QQ 开放平台建应用 → 拿 AppID / AppSecret → 在「QQ 消息平台」新建官方连接，
+                    Webhook 用 <code>/api/public/qqbot/{连接ID}/webhook</code>。
+                    Milky：部署 Milky 端后填地址与 Access Token，扫码登录 QQ。
+                  </span>
+                </li>
+                <li>
+                  <strong>启用连接并测试</strong>
+                  <span>在连接上点「启用」，再用「测试」确认能收发消息；这里的状态条会同步显示连接数。</span>
+                </li>
+                <li>
+                  <strong>玩家绑定游戏账号</strong>
+                  <span>玩家在 QQ 里发「绑定 游戏ID」拿验证码，进服后在聊天栏输入验证码即可完成双向绑定。</span>
+                </li>
+              </ol>
+            </section>
+
+            <section id="qqrobot-anchor-integrations" class="qqrobot-doc-section">
+              <header>
+                <h3>插件联动</h3>
+                <p>按需启用注册审核联动；未安装对应插件时不会阻断 QQ 机器人。</p>
+              </header>
+              <div class="qqrobot-status-strip" :class="{ on: integrations.providerAvailable }">
+                <span class="qqrobot-status-dot" />
+                <strong>{{ integrations.providerAvailable ? '已检测到注册审核插件' : '未检测到注册审核插件' }}</strong>
+              </div>
+              <div class="qqrobot-switch-list">
+                <label class="qqrobot-switch-row">
+                  <span><strong>启用注册审核查询</strong><small>QQ 私聊或群聊发送「注册」时返回当前审核状态</small></span>
+                  <YdSwitch v-model="integrations.registrationReviewEnabled" />
+                </label>
+                <label class="qqrobot-switch-row">
+                  <span><strong>群聊要求审核通过</strong><small>开启后，群内其它指令需先通过注册审核；绑定和「注册」仍可用</small></span>
+                  <YdSwitch v-model="integrations.requireApprovedForGroup" :disabled="!integrations.registrationReviewEnabled" />
+                </label>
+              </div>
               <label class="qqrobot-field qqrobot-wide">
-                <span>好友添加欢迎语</span>
-                <YdTextarea v-model="draft.friendAddMessage" :disabled="!draft.replyToFriendAdd" />
+                <span>注册审核入口</span>
+                <YdInput v-model="integrations.registrationUrl" placeholder="/platform/plugins/registration-review" />
               </label>
-              <label class="qqrobot-field qqrobot-wide">
-                <span>入群欢迎语</span>
-                <YdTextarea v-model="draft.groupAddMessage" :disabled="!draft.replyToGroupAdd" />
-              </label>
-            </div>
-            <p class="qqrobot-muted">
-              欢迎语按纯文本发送，不支持 Markdown。主动消息受开放平台频率限制，建议保持简短。
-            </p>
-          </YdSettingsSection>
-        </YdSettingsLayout>
+            </section>
+          </div>
+        </div>
       </YdLoadingOverlay>
     </div>
   </div>

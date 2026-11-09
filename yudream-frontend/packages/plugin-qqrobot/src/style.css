@@ -5,6 +5,173 @@
 .qqrobot-field { display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--color-text-2,#4e5969); }
 .qqrobot-field.qqrobot-wide { grid-column:1 / -1; }
 .qqrobot-field.qqrobot-switch { flex-direction:row; align-items:center; justify-content:space-between; padding-top:22px; }
+.qqrobot-inline { display:flex; gap:8px; align-items:center; }
+.qqrobot-inline > :first-child { flex:1; }
+.qqrobot-command-panel, .qqrobot-command-card { display:flex; flex-direction:column; gap:14px; padding:18px 20px;
+  border-radius:14px; border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-bg-2,#fff); }
+.qqrobot-command-panel header h3, .qqrobot-command-head h3 { font-size:16px; font-weight:650; }
+.qqrobot-command-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.qqrobot-command-card .qqrobot-field { font-size:13px; color:var(--color-text-2,#4e5969); }
+.qqrobot-scope { display:flex; align-items:center; gap:6px; font-size:12px; }
+.qqrobot-chip button { margin-left:6px; border:none; background:none; cursor:pointer; color:inherit; opacity:.6; }
+.qqrobot-chip button:hover { opacity:1; }
+
+/* 设置页：自带左侧分区导航，避免依赖宿主插槽组件的默认插槽行为 */
+.qqrobot-settings { display:grid; grid-template-columns:220px minmax(0,1fr); gap:28px; align-items:start; }
+.qqrobot-settings-nav { display:flex; flex-direction:column; gap:4px; position:sticky; top:16px; }
+.qqrobot-settings-tab { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:10px;
+  border:none; background:none; cursor:pointer; text-align:left; color:var(--color-text-2,#4e5969); font-size:14px; }
+.qqrobot-settings-tab:hover { background:var(--color-fill-2,#f2f3f5); }
+.qqrobot-settings-tab.on { background:var(--color-fill-2,#f2f3f5); color:var(--color-text-1,#1d2129); font-weight:600; }
+.qqrobot-settings-tab > span:first-child { width:16px; height:16px; margin-top:2px; flex:none; }
+.qqrobot-settings-tab-text { display:flex; flex-direction:column; gap:2px; }
+.qqrobot-settings-tab-text small { font-size:12px; font-weight:400; color:var(--color-text-3,#86909c); }
+.qqrobot-settings-content { display:flex; flex-direction:column; gap:18px; min-width:0; }
+.qqrobot-settings-section { display:flex; flex-direction:column; gap:18px; padding:20px 22px; border-radius:14px;
+  border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-bg-2,#fff); }
+.qqrobot-settings-section > header { display:flex; flex-direction:column; gap:4px; padding-bottom:14px;
+  border-bottom:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-settings-section > header h3 { font-size:16px; font-weight:650; }
+.qqrobot-settings-section > header p { font-size:13px; color:var(--color-text-3,#86909c); }
+
+/* 设置页：连续文档流（对齐原后台的整页滚动式排版），左侧仅保留锚点目录 */
+.qqrobot-doc { display:grid; grid-template-columns:168px minmax(0,1fr); gap:24px; align-items:start; max-width:1180px; }
+.qqrobot-doc-nav { display:flex; flex-direction:column; gap:2px; position:sticky; top:8px; padding-right:8px; }
+.qqrobot-doc-link { appearance:none; border:none; background:none; cursor:pointer; text-align:left; padding:8px 10px;
+  border-radius:8px; font-size:13px; color:var(--color-text-3,#86909c); border-left:2px solid transparent; transition:color .15s; }
+.qqrobot-doc-link:hover { color:var(--color-text-1,#1d2129); background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-doc-link.on { color:var(--primary-6,#165dff); border-left-color:var(--primary-6,#165dff); font-weight:600; }
+.qqrobot-doc-body { display:flex; flex-direction:column; gap:20px; min-width:0; }
+.qqrobot-doc-section { display:flex; flex-direction:column; gap:16px; padding:22px 24px 24px; border-radius:12px;
+  border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-bg-2,#fff); scroll-margin-top:16px; }
+.qqrobot-doc-section > header { display:flex; flex-direction:column; gap:4px; }
+.qqrobot-doc-section > header h3 { font-size:17px; font-weight:650; line-height:1.4; }
+.qqrobot-doc-section > header p { font-size:13px; line-height:1.6; color:var(--color-text-3,#86909c); }
+
+.qqrobot-segment { display:inline-flex; gap:4px; padding:3px; border-radius:10px; background:var(--color-fill-2,#f2f3f5); width:fit-content; }
+.qqrobot-segment button { appearance:none; border:none; background:none; cursor:pointer; padding:7px 16px; border-radius:8px;
+  font-size:13px; color:var(--color-text-2,#4e5969); transition:background .15s,color .15s; }
+.qqrobot-segment button.on { background:var(--color-bg-2,#fff); color:var(--primary-6,#165dff); font-weight:600;
+  box-shadow:0 1px 3px rgba(0,0,0,.08); }
+
+.qqrobot-switch-list { display:flex; flex-direction:column; border-top:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-switch-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 0; cursor:pointer;
+  border-bottom:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-switch-row:last-child { border-bottom:none; padding-bottom:0; }
+.qqrobot-switch-row > span { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.qqrobot-switch-row strong { font-size:13px; font-weight:600; color:var(--color-text-1,#1d2129); }
+.qqrobot-switch-row small { font-size:12px; line-height:1.5; color:var(--color-text-3,#86909c); }
+.qqrobot-switch-row > :last-child { flex:none; }
+
+.qqrobot-message-list { display:flex; flex-direction:column; gap:14px; }
+.qqrobot-message-item { display:grid; grid-template-columns:220px minmax(0,1fr); gap:16px; align-items:start; }
+.qqrobot-message-label { display:flex; flex-direction:column; gap:3px; padding-top:7px; }
+.qqrobot-message-label strong { font-size:13px; font-weight:600; color:var(--color-text-1,#1d2129); }
+.qqrobot-message-label small { font-size:12px; line-height:1.5; color:var(--color-text-3,#86909c); }
+
+.qqrobot-sample { display:flex; gap:14px; padding:14px 16px; border-radius:10px;
+  border:1px dashed var(--color-border-2,#e5e6eb); background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-sample-label { flex:none; font-size:12px; color:var(--color-text-3,#86909c); padding-top:2px; }
+.qqrobot-sample-body { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; }
+.qqrobot-sample-q { padding:1px 7px; border-radius:5px; background:rgba(22,93,255,.1); color:#165dff; font-size:12px; }
+.qqrobot-sample-text { color:var(--color-text-2,#4e5969); }
+.qqrobot-sample-arrow { color:var(--color-text-4,#c9cdd4); }
+.qqrobot-sample-code { padding:2px 10px; border-radius:6px; background:var(--color-bg-2,#fff); font-weight:700;
+  letter-spacing:3px; color:var(--primary-6,#165dff); border:1px solid var(--color-border-2,#e5e6eb); }
+.qqrobot-sample-hint { font-size:12px; color:var(--color-text-3,#86909c); }
+
+.qqrobot-status-strip { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:11px 16px; border-radius:10px;
+  border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-fill-1,#f7f8fa); font-size:13px; }
+.qqrobot-status-strip strong { font-weight:650; }
+.qqrobot-status-dot { width:8px; height:8px; border-radius:50%; background:#c9cdd4; flex:none; }
+.qqrobot-status-strip.on { border-color:rgba(0,180,42,.3); background:rgba(0,180,42,.05); }
+.qqrobot-status-strip.on .qqrobot-status-dot { background:#00b42a; box-shadow:0 0 6px rgba(0,180,42,.55); }
+.qqrobot-status-test { margin-left:auto; font-size:12px; }
+.qqrobot-status-test.ok { color:#009a29; }
+.qqrobot-status-test.bad { color:#d4380d; }
+.qqrobot-status-link { margin-left:auto; font-size:13px; color:var(--primary-6,#165dff); text-decoration:none; }
+.qqrobot-status-link:hover { text-decoration:underline; }
+
+/* 机器人设置：宿主连接只读列表 */
+.qqrobot-conn-list { display:flex; flex-direction:column; border:1px solid var(--color-border-2,#e5e6eb);
+  border-radius:10px; overflow:hidden; }
+.qqrobot-conn-row { display:flex; align-items:center; gap:12px; padding:12px 16px; font-size:13px;
+  border-bottom:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-conn-row:last-child { border-bottom:none; }
+.qqrobot-conn-dot { width:8px; height:8px; border-radius:50%; background:#00b42a;
+  box-shadow:0 0 6px rgba(0,180,42,.5); flex:none; }
+.qqrobot-conn-main { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+.qqrobot-conn-main strong { font-size:14px; font-weight:600; }
+.qqrobot-conn-main code { font-size:11px; color:var(--color-text-3,#86909c); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.qqrobot-blocked { display:flex; flex-direction:column; gap:6px; padding:16px 18px; border-radius:10px;
+  border:1px dashed var(--color-border-2,#e5e6eb); background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-blocked strong { font-size:14px; font-weight:650; }
+.qqrobot-blocked p { margin:0; font-size:13px; line-height:1.6; color:var(--color-text-3,#86909c); }
+.qqrobot-blocked a { font-size:13px; color:var(--primary-6,#165dff); text-decoration:none; width:fit-content; }
+.qqrobot-blocked a:hover { text-decoration:underline; }
+.qqrobot-steps { display:flex; flex-direction:column; gap:16px; margin:0; padding-left:20px; }
+.qqrobot-steps li { display:flex; flex-direction:column; gap:5px; font-size:13px; line-height:1.65;
+  color:var(--color-text-2,#4e5969); }
+.qqrobot-steps strong { font-size:14px; font-weight:600; color:var(--color-text-1,#1d2129); }
+.qqrobot-steps code { padding:1px 6px; border-radius:5px; background:var(--color-fill-2,#f2f3f5); font-size:12px; }
+
+.qqrobot-advanced > summary { cursor:pointer; font-size:12px; color:var(--color-text-3,#86909c); padding:2px 0; }
+.qqrobot-advanced[open] > summary { margin-bottom:10px; }
+
+/* 指令设置：紧凑表格 + 抽屉编辑 */
+.qqrobot-cmd-section-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.qqrobot-cmd-section-head > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.qqrobot-cmd-section-head h3 { font-size:17px; font-weight:650; display:flex; align-items:baseline; gap:8px; }
+.qqrobot-cmd-section-head p { font-size:13px; line-height:1.6; color:var(--color-text-3,#86909c); }
+.qqrobot-cmd-section-head code { padding:1px 6px; border-radius:5px; background:var(--color-fill-2,#f2f3f5); font-size:12px; }
+.qqrobot-count { font-size:12px; font-weight:500; color:var(--color-text-3,#86909c); }
+.qqrobot-cmd-filter { width:220px; flex:none; }
+.qqrobot-prefix-row { max-width:420px; }
+
+.qqrobot-cmd-table { display:flex; flex-direction:column; border:1px solid var(--color-border-2,#e5e6eb);
+  border-radius:10px; overflow:hidden; }
+.qqrobot-cmd-row { display:grid; grid-template-columns:180px minmax(0,1.5fr) minmax(0,1fr) 84px; gap:16px;
+  align-items:center; padding:11px 16px; background:none; border:none; width:100%; text-align:left;
+  border-bottom:1px solid var(--color-border-1,#f2f3f5); font-size:13px; cursor:pointer; transition:background .12s; }
+.qqrobot-cmd-row:last-child { border-bottom:none; }
+.qqrobot-cmd-row:hover { background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-cmd-row.off { opacity:.62; }
+.qqrobot-cmd-head { cursor:default; font-size:12px; color:var(--color-text-3,#86909c); background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-cmd-head:hover { background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-cmd-name { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.qqrobot-cmd-name strong { font-size:14px; font-weight:600; color:var(--color-text-1,#1d2129); }
+.qqrobot-cmd-name code { font-size:11px; color:var(--color-text-3,#86909c); }
+.qqrobot-cmd-triggers, .qqrobot-cmd-scopes { margin-top:0; gap:5px; }
+.qqrobot-cmd-triggers .qqrobot-chip, .qqrobot-cmd-scopes .qqrobot-chip { font-size:11px; padding:2px 8px; }
+.qqrobot-cmd-state { justify-self:start; }
+.qqrobot-cmd-empty { padding:34px 16px; text-align:center; }
+.qqrobot-cmd-editor { display:flex; flex-direction:column; gap:20px; }
+.qqrobot-cmd-editor .qqrobot-switch-row:first-child { padding-top:0; }
+
+.qqrobot-notice { border:1px solid var(--color-border-2,#e5e6eb); border-radius:10px; overflow:hidden;
+  background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-notice-head { display:flex; align-items:center; gap:10px; width:100%; padding:10px 16px; border:none;
+  background:none; cursor:pointer; text-align:left; font-size:13px; }
+.qqrobot-notice-head:hover { background:var(--color-fill-2,#f2f3f5); }
+.qqrobot-notice-dot { width:7px; height:7px; border-radius:50%; background:#ff7d00; flex:none; }
+.qqrobot-notice-head .qqrobot-muted { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qqrobot-notice-more { margin-left:auto; flex:none; font-size:12px; color:var(--primary-6,#165dff); }
+.qqrobot-notice-list { display:flex; flex-direction:column; border-top:1px solid var(--color-border-2,#e5e6eb); }
+.qqrobot-notice-item { display:grid; grid-template-columns:180px 120px minmax(0,1fr); gap:12px; align-items:center;
+  padding:9px 16px; border-bottom:1px solid var(--color-border-1,#f2f3f5); font-size:12px; }
+.qqrobot-notice-item:last-child { border-bottom:none; }
+.qqrobot-notice-item p { margin:0; }
+.qqrobot-callback { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px;
+  border-radius:10px; background:var(--color-fill-1,#f7f8fa); border:1px solid var(--color-border-2,#e5e6eb); }
+.qqrobot-callback code { font-size:12px; word-break:break-all; color:var(--color-text-2,#4e5969); }
+.qqrobot-command-list { display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+.qqrobot-command-list code { display:flex; justify-content:space-between; gap:10px; padding:8px 12px; border-radius:8px;
+  background:var(--color-fill-1,#f7f8fa); font-size:12px; }
+.qqrobot-command-list code button { border:none; background:none; cursor:pointer; color:#f53f3f; }
+.qqrobot-ok { color:#009a29; }
+.qqrobot-preview-skeleton { display:flex; align-items:center; justify-content:center; min-height:180px;
+  border-radius:10px; background:var(--color-fill-1,#f7f8fa); color:var(--color-text-3,#86909c); font-size:13px; }
 .qqrobot-empty { padding:56px 0; }
 .qqrobot-pager { display:flex; justify-content:flex-end; padding-top:6px; }
 .qqrobot-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
@@ -33,6 +200,20 @@
 .qqrobot-market-body h3 { font-size:17px; font-weight:700; }
 .qqrobot-market-foot { display:flex; justify-content:space-between; margin-top:8px; color:var(--color-text-3,#86909c); font-size:12px; }
 .qqrobot-market-actions { display:flex; gap:8px; margin-top:10px; }
+.qqrobot-market-blank { align-items:center; padding:40px 24px 32px; }
+.qqrobot-market-blank-icon { width:64px; height:64px; display:flex; align-items:center; justify-content:center;
+  border-radius:18px; background:linear-gradient(140deg,#2b2b3a,#191922); color:#8f8fa8; font-size:26px; }
+.qqrobot-market-hints { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; width:100%;
+  margin-top:8px; padding-top:20px; border-top:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-market-hints > div { display:flex; flex-direction:column; gap:4px; }
+.qqrobot-market-hints strong { font-size:13px; font-weight:600; color:var(--color-text-1,#1d2129); }
+.qqrobot-market-hints span { font-size:12px; line-height:1.6; color:var(--color-text-3,#86909c); }
+.qqrobot-groups-blank { align-items:center; padding:40px 24px 32px; }
+.qqrobot-groups-hints { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; width:100%;
+  margin-top:8px; padding-top:20px; border-top:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-groups-hints > div { display:flex; flex-direction:column; gap:4px; }
+.qqrobot-groups-hints strong { font-size:13px; font-weight:600; }
+.qqrobot-groups-hints span { font-size:12px; line-height:1.6; color:var(--color-text-3,#86909c); }
 .qqrobot-search { width:260px; }
 .qqrobot-connection { width:200px; }
 .qqrobot-bridge-token { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 20px;
@@ -53,7 +234,12 @@
 .qqrobot-preview-card { margin:0; padding:14px; border-radius:14px; border:1px solid var(--color-border-2,#e5e6eb);
   background:var(--color-bg-2,#fff); display:flex; flex-direction:column; gap:10px; }
 .qqrobot-preview-card figcaption { font-size:13px; color:var(--color-text-2,#4e5969); font-weight:600; }
-.qqrobot-preview-card img { width:100%; height:auto; border-radius:10px; background:#101014; display:block; }
+.qqrobot-preview-card img { width:100%; height:auto; max-height:720px; object-fit:contain; border-radius:10px;
+  background:#101014; display:block; }
+.qqrobot-preview-help { padding:12px 16px; border-radius:10px; border:1px solid var(--color-border-2,#e5e6eb);
+  background:var(--color-fill-1,#f7f8fa); font-size:12px; color:var(--color-text-3,#86909c); }
+.qqrobot-preview-help summary { cursor:pointer; font-size:13px; color:var(--color-text-2,#4e5969); }
+.qqrobot-preview-help ul { margin:10px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:5px; line-height:1.6; }
 .qqrobot-preview-error { color:var(--danger-6,#f53f3f); font-size:13px; }
 .qqrobot-preview-grid.is-blocked .qqrobot-preview-card img { opacity:.35; }
 .qqrobot-render-bar { display:flex; flex-direction:column; gap:6px; padding:12px 16px; border-radius:12px;
@@ -69,8 +255,9 @@
 .qqrobot-template-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
 .qqrobot-template-card { display:flex; flex-direction:column; border-radius:14px; overflow:hidden;
   border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-bg-2,#fff); }
-.qqrobot-template-cover { position:relative; aspect-ratio:16/10; background:#0f1015; cursor:pointer; overflow:hidden; }
-.qqrobot-template-cover img { width:100%; height:100%; object-fit:cover; display:block; }
+.qqrobot-template-cover { position:relative; aspect-ratio:4/3; background:#0f1015; cursor:pointer; overflow:hidden;
+  display:flex; align-items:center; justify-content:center; }
+.qqrobot-template-cover img { width:100%; height:100%; object-fit:contain; display:block; }
 .qqrobot-template-fallback { width:100%; height:100%; display:flex; align-items:center; justify-content:center;
   font-size:34px; font-weight:800; color:rgba(255,255,255,.35);
   background:linear-gradient(140deg,#232433,#111219); }
@@ -119,4 +306,67 @@
   .qqrobot-bridge-kick { grid-template-columns:1fr; }
   .qqrobot-preview-grid { grid-template-columns:1fr; }
   .qqrobot-template-editor-body { grid-template-columns:1fr; }
+  .qqrobot-settings { grid-template-columns:1fr; }
+  .qqrobot-settings-nav { position:static; flex-direction:row; flex-wrap:wrap; }
+}
+.qqrobot-tpl-editor { display:flex; flex-direction:column; gap:18px; margin-top:24px; padding:20px 22px 24px;
+  border-radius:14px; border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-bg-2,#fff); }
+.qqrobot-tpl-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;
+  padding-bottom:14px; border-bottom:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-tpl-head h2 { font-size:18px; font-weight:700; }
+.qqrobot-tpl-head p { font-size:12px; color:var(--color-text-3,#86909c); margin-top:2px; }
+.qqrobot-tpl-back { display:block; margin-bottom:8px; padding:0; border:0; background:none; color:var(--primary-6,#165dff);
+  font-size:12px; cursor:pointer; }
+.qqrobot-tpl-head-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.qqrobot-tpl-body { display:grid; grid-template-columns:150px minmax(0,1fr) 320px; gap:22px; align-items:start; }
+.qqrobot-tpl-nav { display:flex; flex-direction:column; gap:2px; position:sticky; top:12px; }
+.qqrobot-tpl-form { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.qqrobot-tpl-section { display:flex; flex-direction:column; gap:16px; padding:18px 20px; border-radius:12px;
+  border:1px solid var(--color-border-2,#e5e6eb); background:var(--color-bg-2,#fff); scroll-margin-top:12px; }
+.qqrobot-tpl-section > header { display:flex; flex-direction:column; gap:3px; padding-bottom:12px;
+  border-bottom:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-tpl-section > header h3 { font-size:15px; font-weight:650; }
+.qqrobot-tpl-section > header p { font-size:12px; line-height:1.6; color:var(--color-text-3,#86909c); }
+.qqrobot-check-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; }
+.qqrobot-filter-list { display:flex; flex-direction:column; border:1px solid var(--color-border-2,#e5e6eb);
+  border-radius:10px; overflow:hidden; }
+.qqrobot-filter-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 16px;
+  border-bottom:1px solid var(--color-border-1,#f2f3f5); }
+.qqrobot-filter-row:last-child { border-bottom:none; }
+.qqrobot-filter-name { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.qqrobot-filter-name strong { font-size:13px; font-weight:600; }
+.qqrobot-filter-name small { font-size:11px; color:var(--color-text-3,#86909c); }
+.qqrobot-filter-actions { display:flex; gap:16px; flex:none; }
+.qqrobot-css { width:100%; min-height:150px; padding:12px; border-radius:10px;
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12px; line-height:1.6;
+  border:1px solid var(--color-border-2,#e5e6eb); background:#0f1015; color:#d8d8e0; resize:vertical; }
+.qqrobot-tpl-preview { display:flex; flex-direction:column; gap:8px; position:sticky; top:12px;
+  padding:14px; border-radius:12px; border:1px solid var(--color-border-2,#e5e6eb);
+  background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-tpl-preview-head { display:flex; justify-content:space-between; align-items:center; }
+.qqrobot-tpl-preview-head strong { font-size:13px; font-weight:600; }
+.qqrobot-tpl-preview-head button { border:none; background:none; cursor:pointer; font-size:12px;
+  color:var(--primary-6,#165dff); }
+.qqrobot-tpl-preview img { width:100%; height:auto; border-radius:8px; background:#0f1015; display:block; }
+.qqrobot-api-catalog { display:flex; flex-direction:column; gap:8px; padding:12px 14px; border:1px solid var(--color-border-2,#e5e6eb);
+  border-radius:10px; background:var(--color-fill-1,#f7f8fa); }
+.qqrobot-api-catalog-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.qqrobot-api-catalog-head > div { display:flex; flex-direction:column; gap:3px; }
+.qqrobot-api-catalog-head strong { font-size:13px; }
+.qqrobot-api-catalog-head small, .qqrobot-api-row small { color:var(--color-text-3,#86909c); font-size:11px; line-height:1.5; }
+.qqrobot-api-row { display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-top:1px solid var(--color-border-1,#f2f3f5); cursor:pointer; }
+.qqrobot-api-row > span { display:flex; flex-wrap:wrap; align-items:center; gap:6px; min-width:0; }
+.qqrobot-api-row strong { font-size:12px; }
+.qqrobot-api-row code { padding:1px 5px; border-radius:4px; background:var(--color-fill-2,#f2f3f5); font-size:10px; }
+.qqrobot-api-row small { flex-basis:100%; }
+
+@media (max-width: 980px) {
+  .qqrobot-tpl-body { grid-template-columns:130px minmax(0,1fr); }
+  .qqrobot-tpl-preview { grid-column:1 / -1; position:static; }
+}
+
+@media (max-width: 760px) {
+  .qqrobot-tpl-body { grid-template-columns:1fr; }
+  .qqrobot-tpl-nav { position:static; flex-direction:row; flex-wrap:wrap; }
+  .qqrobot-tpl-preview { grid-column:auto; }
 }

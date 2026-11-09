@@ -21,7 +21,7 @@ class BindingServiceTest {
         InMemoryDocuments documents = new InMemoryDocuments();
         SettingsService settings = new SettingsService(documents);
         settings.saveBindSettings(new BindSettings("dual", List.of(), 1, 5, 4, true,
-                true, false, "", "numeric", "绑定", "解绑", "a", "b", "c", "d", "e"));
+                true, false, "", "numeric", "绑定", "解绑", "a", "b", "c", "d", "e", List.of()));
         BindingService service = new BindingService(documents, settings);
 
         service.bind("10001", "Steve", "Steve", "survival");
@@ -42,6 +42,21 @@ class BindingServiceTest {
         BindingService service = new BindingService(documents, settings);
 
         assertThrows(QqRobotException.class, () -> service.bind("1", "小明", "小明", "survival"));
+    }
+
+    @Test
+    void unbindAllRemovesEveryPlayerOwnedBySocialIdentity() {
+        InMemoryDocuments documents = new InMemoryDocuments();
+        SettingsService settings = new SettingsService(documents);
+        settings.saveBindSettings(new BindSettings("dual", List.of(), 3, 5, 4, true,
+                true, false, "", "numeric", "绑定", "解绑", "a", "b", "c", "d", "e", List.of()));
+        BindingService service = new BindingService(documents, settings);
+
+        service.bind("10001", "User", "Steve", "survival");
+        service.bind("10001", "User", "Alex", "survival");
+
+        assertEquals(2, service.unbindAll("10001").size());
+        assertTrue(service.bySocial("10001", 1, 20).isEmpty());
     }
 
     private static final class InMemoryDocuments implements PluginDocumentStore {

@@ -42,7 +42,7 @@ public class ResourceCardRenderer {
         ResourceEntry entry = raw.normalized();
         String cover = coverDataUri != null && coverDataUri.startsWith("data:image/")
                 ? "<div class=\"cover\" style=\"background-image:url(" + coverDataUri + ")\"></div>"
-                : "<div class=\"cover placeholder\"><span class=\"placeholder-mark\">资源封面</span></div>";
+                : placeholderCover(entry);
         String platforms = entry.platforms().stream()
                 .map(platform -> "<span class=\"chip\">" + ItemCardRenderer.escape(platform) + "</span>")
                 .reduce("", String::concat);
@@ -57,9 +57,10 @@ public class ResourceCardRenderer {
                 .card{width:430px;border-radius:18px;overflow:hidden;background:#17171d;color:#e9e9f2;
                   border:1px solid #2c2c36}
                 .cover{height:190px;background-size:cover;background-position:center;position:relative}
-                .cover.placeholder{background:linear-gradient(135deg,#2b2b3a,#191922);display:flex;
-                  align-items:center;justify-content:center}
-                .placeholder-mark{font-size:13px;letter-spacing:3px;color:#4d4d63}
+                .cover.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+                .placeholder-mark{font-size:54px;font-weight:800;letter-spacing:4px;
+                  color:rgba(255,255,255,.9);text-shadow:0 6px 24px rgba(0,0,0,.35)}
+                .placeholder-sub{font-size:12px;letter-spacing:2px;color:rgba(255,255,255,.45)}
                 .badge{position:absolute;right:14px;top:14px;padding:6px 12px;border-radius:999px;
                   background:rgba(22,120,74,.9);font-size:13px;font-weight:700;color:#d7ffe8}
                 .body{padding:18px 20px 16px}
@@ -105,5 +106,18 @@ public class ResourceCardRenderer {
                 </div>
                 </body></html>
                 """;
+    }
+
+    /** 没有封面时用标题首字生成渐变封面，避免卡片出现大面积空白占位文字。 */
+    private String placeholderCover(ResourceEntry entry) {
+        String title = entry.title().isBlank() ? "资源" : entry.title();
+        String mark = title.substring(0, Math.min(2, title.codePointCount(0, title.length())));
+        String hue = String.valueOf(Math.floorMod(title.hashCode(), 360));
+        return "<div class=\"cover placeholder\" style=\"background:"
+                + "radial-gradient(120% 120% at 15% 0%,hsla(" + hue + ",70%,58%,.42),transparent 60%),"
+                + "linear-gradient(135deg,#242433,#12121a)\">"
+                + "<span class=\"placeholder-mark\">" + ItemCardRenderer.escape(mark) + "</span>"
+                + "<span class=\"placeholder-sub\">" + ItemCardRenderer.escape(entry.platforms().stream().findFirst().orElse("资源") + " · 图片卡片") + "</span>"
+                + "</div>";
     }
 }

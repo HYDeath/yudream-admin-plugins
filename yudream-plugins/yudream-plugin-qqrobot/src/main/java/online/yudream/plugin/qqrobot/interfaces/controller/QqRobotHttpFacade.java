@@ -12,15 +12,19 @@ import online.yudream.plugin.qqrobot.application.service.InventoryPreview;
 import online.yudream.plugin.qqrobot.application.service.NoticeService;
 import online.yudream.plugin.qqrobot.application.service.RenderSupport;
 import online.yudream.plugin.qqrobot.application.service.ResourceService;
+import online.yudream.plugin.qqrobot.application.service.ServerListData;
 import online.yudream.plugin.qqrobot.application.service.SettingsService;
 import online.yudream.plugin.qqrobot.application.service.TemplateService;
 import online.yudream.plugin.qqrobot.bridge.BridgeHub;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
+import online.yudream.plugin.qqrobot.domain.CommandSettings;
 import online.yudream.plugin.qqrobot.domain.GroupSettings;
 import online.yudream.plugin.qqrobot.domain.ResourceEntry;
 import online.yudream.plugin.qqrobot.domain.ImageTemplate;
 import online.yudream.plugin.qqrobot.domain.QqBotSettings;
+import online.yudream.plugin.qqrobot.domain.QqIntegrationSettings;
 import online.yudream.plugin.qqrobot.application.service.QqApiClient;
+import online.yudream.plugin.qqrobot.application.service.RegistrationReviewIntegration;
 import online.yudream.base.plugin.spi.system.secret.PluginSecretStore;
 
 import java.util.ArrayList;
@@ -42,11 +46,30 @@ public class QqRobotHttpFacade {
     private final NoticeService notices;
     private final TemplateService templates;
     private final PluginSecretStore secrets;
+    private final ServerListData serverData;
+    private final RegistrationReviewIntegration registration;
 
     public QqRobotHttpFacade(SettingsService settings, BindingService bindings, BindCodeService codes,
                              GroupService groups, ResourceService resources, BridgeHub bridge,
                              InventoryPreview preview, RenderSupport renderSupport, NoticeService notices,
                              TemplateService templates, PluginSecretStore secrets) {
+        this(settings, bindings, codes, groups, resources, bridge, preview, renderSupport, notices, templates,
+                secrets, null, null);
+    }
+
+    public QqRobotHttpFacade(SettingsService settings, BindingService bindings, BindCodeService codes,
+                             GroupService groups, ResourceService resources, BridgeHub bridge,
+                             InventoryPreview preview, RenderSupport renderSupport, NoticeService notices,
+                             TemplateService templates, PluginSecretStore secrets, ServerListData serverData) {
+        this(settings, bindings, codes, groups, resources, bridge, preview, renderSupport, notices, templates,
+                secrets, serverData, null);
+    }
+
+    public QqRobotHttpFacade(SettingsService settings, BindingService bindings, BindCodeService codes,
+                             GroupService groups, ResourceService resources, BridgeHub bridge,
+                             InventoryPreview preview, RenderSupport renderSupport, NoticeService notices,
+                             TemplateService templates, PluginSecretStore secrets, ServerListData serverData,
+                             RegistrationReviewIntegration registration) {
         this.settings = settings;
         this.bindings = bindings;
         this.codes = codes;
@@ -58,6 +81,17 @@ public class QqRobotHttpFacade {
         this.notices = notices;
         this.templates = templates;
         this.secrets = secrets;
+        this.serverData = serverData;
+        this.registration = registration;
+    }
+
+    /** 服务器台账（来自 minecraft-server 插件），供模板配置里的筛选器使用。 */
+    public PluginHttpResponse servers() {
+        if (serverData == null) {
+            return PluginHttpResponse.ok(Map.of("servers", List.of(), "available", false));
+        }
+        Map<String, Object> variables = serverData.variables(Map.of("showOnlyOnline", false, "showPlayerList", false));
+        return PluginHttpResponse.ok(Map.of("servers", variables.get("servers"), "available", true));
     }
 
     public PluginHttpResponse bindSettings() {
@@ -69,6 +103,40 @@ public class QqRobotHttpFacade {
         view.put("secretConfigured", secretConfigured(settings.botSettings().appSecretRef()));
         view.put("publicKeyConfigured", secretConfigured("qq-webhook-public-key"));
         return PluginHttpResponse.ok(view);
+    }
+
+    /**
+     * 机器人接入状态：连接列表直接来自宿主「QQ 消息平台」能力，插件不再保存
+     * AppID / AppSecret。用户在这里看到的连接与「平台 → 消息平台」完全一致，
+     * 避免同一套凭证在两处维护、互相覆盖。
+     */
+    public PluginHttpResponse botConnections() {
+        List<Map<String, Object>> connections = new ArrayList<>();
+        String capabilityState = "ready";
+        String message = "";
+        try {
+            for (var connection : groups.connectionsOrThrow()) {
+                Map<String, Object> row = new LinkedHashMap<>(connection);
+                row.put("official", "official".equalsIgnoreCase(String.valueOf(connection.get("protocol"))));
+                connections.add(row);
+            }
+        } catch (RuntimeException exception) {
+            capabilityState = "unavailable";
+            message = exception.getMessage() == null ? "QQ 消息平台未启用" : exception.getMessage();
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("state", connections.isEmpty() && "ready".equals(capabilityState) ? "empty" : capabilityState);
+        body.put("message", message);
+        body.put("connections", connections);
+        body.put("capability", "milky");
+        body.put("capabilityName", "QQ 消息平台");
+        body.put("managePath", "/platform/milky");
+        body.put("replyEnabled", settings.botSettings().enabled());
+        body.put("replyToFriendAdd", settings.botSettings().replyToFriendAdd());
+        body.put("replyToGroupAdd", settings.botSettings().replyToGroupAdd());
+        body.put("friendAddMessage", settings.botSettings().friendAddMessage());
+        body.put("groupAddMessage", settings.botSettings().groupAddMessage());
+        return PluginHttpResponse.ok(body);
     }
 
     public PluginHttpResponse saveBotSettings(PluginHttpRequest request) {
@@ -139,6 +207,53 @@ public class QqRobotHttpFacade {
     public PluginHttpResponse saveBindSettings(PluginHttpRequest request) {
         return handle(() -> PluginHttpResponse.ok(settings.saveBindSettings(
                 mapper.convertValue(read(request), BindSettings.class))));
+    }
+
+    /**
+     * 指令设置。保存后立即广播给已连接的服务端，聊天栏触发词不需要重启。
+     */
+    public PluginHttpResponse commandSettings() {
+        return PluginHttpResponse.ok(settings.commandSettings());
+    }
+
+    public PluginHttpResponse saveCommandSettings(PluginHttpRequest request) {
+        return handle(() -> {
+            CommandSettings saved = settings.saveCommandSettings(
+                    mapper.convertValue(read(request), CommandSettings.class));
+            broadcastCommands(saved);
+            return PluginHttpResponse.ok(saved);
+        });
+    }
+
+    public PluginHttpResponse integrationSettings() {
+        QqIntegrationSettings value = settings.integrationSettings();
+        return PluginHttpResponse.ok(value.toView(registration != null && registration.providerAvailable()));
+    }
+
+    public PluginHttpResponse saveIntegrationSettings(PluginHttpRequest request) {
+        return handle(() -> {
+            QqIntegrationSettings saved = settings.saveIntegrationSettings(
+                    mapper.convertValue(read(request), QqIntegrationSettings.class));
+            return PluginHttpResponse.ok(saved.toView(registration != null && registration.providerAvailable()));
+        });
+    }
+
+    /** 只把启用的动作同步给服务端，避免服务端匹配到后台已关闭的指令。 */
+    private void broadcastCommands(CommandSettings settings) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("commands", settings.commands().stream()
+                .filter(CommandSettings.CommandBinding::enabled)
+                .filter(command -> command.supports("game"))
+                .map(command -> Map.of(
+                        "action", command.action(),
+                        "triggers", command.triggers()))
+                .toList());
+        payload.put("chatTriggerEnabled", true);
+        try {
+            bridge.broadcast("commands.sync", payload);
+        } catch (RuntimeException ignored) {
+            // 没有在线服务端时下次接入会通过 hello 后的同步补齐。
+        }
     }
 
     public PluginHttpResponse groups(PluginHttpRequest request) {
@@ -355,7 +470,15 @@ public class QqRobotHttpFacade {
             body.put("category", template.category());
             body.put("tags", template.tags());
             body.put("cover", template.cover());
+            body.put("background", template.background());
             body.put("html", template.html());
+            body.put("settings", template.settings());
+            Map<String, Object> schema = new LinkedHashMap<>();
+            if ("builtin-server-list".equals(template.id())) {
+                schema.putAll(online.yudream.plugin.qqrobot.application.service.ServerListSchema.view());
+            }
+            schema.put("apiSources", online.yudream.plugin.qqrobot.application.service.TemplateApiCatalog.view());
+            body.put("schema", schema);
             body.put("width", template.width());
             body.put("variables", TemplateService.variables(template.html()));
             body.put("updatedAt", template.updatedAt().toString());
@@ -403,7 +526,18 @@ public class QqRobotHttpFacade {
             JsonNode body = read(request);
             JsonNode variables = body.has("variables") ? body.get("variables") : body;
             Map<String, Object> map = mapper.convertValue(variables, Map.class);
-            var image = templates.render(id, map);
+            Map<String, Object> draft = body.has("settings")
+                    ? mapper.convertValue(body.get("settings"), Map.class) : null;
+            var image = templates.render(id, map, draft);
+            return new PluginHttpResponse(200, Map.of("Cache-Control", "no-store"),
+                    "image/png", image.content(), false);
+        });
+    }
+
+    /** 不带草稿的预览（GET），给浏览器/外部工具直接取图。 */
+    public PluginHttpResponse renderTemplatePreview(PluginHttpRequest request) {
+        return handle(() -> {
+            var image = templates.render(pathVar(request, "id"), Map.of());
             return new PluginHttpResponse(200, Map.of("Cache-Control", "no-store"),
                     "image/png", image.content(), false);
         });

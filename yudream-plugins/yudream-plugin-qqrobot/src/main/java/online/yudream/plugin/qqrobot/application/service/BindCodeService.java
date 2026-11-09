@@ -21,16 +21,27 @@ public class BindCodeService {
     private final Map<String, PendingCode> pending = new ConcurrentHashMap<>();
 
     public record PendingCode(String code, String playerName, String serverId, String socialId,
-                              String socialName, Instant expiresAt, BindSettings settings) {
+                              String socialName, String groupId, String connectionId,
+                              Instant expiresAt, BindSettings settings) {
+        public PendingCode(String code, String playerName, String serverId, String socialId,
+                           String socialName, Instant expiresAt, BindSettings settings) {
+            this(code, playerName, serverId, socialId, socialName, "", "", expiresAt, settings);
+        }
     }
 
     public synchronized PendingCode issue(String playerName, String serverId, String socialId, String socialName,
                                           BindSettings settings) {
+        return issue(playerName, serverId, socialId, socialName, "", "", settings);
+    }
+
+    public synchronized PendingCode issue(String playerName, String serverId, String socialId, String socialName,
+                                          String groupId, String connectionId, BindSettings settings) {
         purgeExpired();
         pending.entrySet().removeIf(entry -> entry.getValue().playerName().equalsIgnoreCase(playerName)
                 && entry.getValue().serverId().equals(serverId));
         String code = generate(settings);
         PendingCode value = new PendingCode(code, playerName, serverId, socialId, socialName,
+                groupId == null ? "" : groupId, connectionId == null ? "" : connectionId,
                 Instant.now().plus(Duration.ofMinutes(settings.codeTtlMinutes())), settings);
         pending.put(code, value);
         return value;

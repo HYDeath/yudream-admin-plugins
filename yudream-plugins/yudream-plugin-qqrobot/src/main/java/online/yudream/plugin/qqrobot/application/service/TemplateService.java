@@ -41,6 +41,11 @@ public class TemplateService {
     private final RenderSupport render;
     private final String publicPrefix;
     private final AvatarService avatars;
+    private final BackgroundService backgrounds;
+    /** 用于把 {@code {{papi.xxx}}} 解析成 PlaceholderAPI 的值；为空时原样保留。 */
+    private online.yudream.plugin.qqrobot.bridge.BridgeHub bridge;
+    /** 服务器在线列表的数据来源；为空时退回内置示例变量。 */
+    private ServerListData servers;
     /**
      * 文件存储不可用（未部署对象存储）时的兜底：把封面留在内存里。
      * 只在当前进程有效，重启后重新预热；总比模板列表全是空卡片好。
@@ -56,21 +61,49 @@ public class TemplateService {
 
     public TemplateService(PluginDocumentStore documents, PluginFileStore files, RenderSupport render,
                            String publicPrefix, AvatarService avatars) {
+        this(documents, files, render, publicPrefix, avatars, new BackgroundService());
+    }
+
+    public TemplateService(PluginDocumentStore documents, PluginFileStore files, RenderSupport render,
+                           String publicPrefix, AvatarService avatars, BackgroundService backgrounds) {
         this.documents = documents;
         this.files = files;
         this.render = render;
         this.publicPrefix = publicPrefix;
         this.avatars = avatars == null ? new AvatarService(false) : avatars;
+        this.backgrounds = backgrounds == null ? new BackgroundService() : backgrounds;
     }
 
     /** 首次打开时灌入两个可直接使用的模板，避免空列表。 */
     public void seedDefaults() {
         if (!documents.findAll(COLLECTION, 1, 1).isEmpty()) {
+            upgradeBuiltinServerList();
             return;
         }
         for (ImageTemplate template : BuiltinTemplates.all()) {
             documents.save(COLLECTION, template.id(), template.toDocument());
         }
+    }
+
+    /**
+     * 升级路径：旧版本存下来的「服务器在线列表」是整段 HTML，没有结构化配置。
+     * 这里只重建内置模板（作者为「系统模板」），自定义模板一律不动；重建后
+     * 页面上的分组配置就能立刻生效，不用等运营手动保存一次。
+     */
+    private void upgradeBuiltinServerList() {
+        ImageTemplate existing = find("builtin-server-list").orElse(null);
+        if (existing == null || !"系统模板".equals(existing.author())) {
+            return;
+        }
+        if (!existing.settings().isEmpty() && existing.html().contains("scrim")) {
+            return;
+        }
+        Map<String, Object> settings = ServerListSchema.merge(existing.settings(), ServerListSchema.defaults());
+        documents.save(COLLECTION, existing.id(), new ImageTemplate(
+                existing.id(), existing.name(), existing.version(), existing.description(), existing.author(),
+                existing.category(), existing.tags(), existing.cover(), existing.background(),
+                ServerListSchema.html(settings), ServerListSchema.widthOf(settings),
+                settings, existing.createdAt(), Instant.now()).toDocument());
     }
 
     public List<Map<String, Object>> list(String keyword, String category) {
@@ -98,12 +131,19 @@ public class TemplateService {
         ImageTemplate existing = template.id() == null || template.id().isBlank()
                 ? null : find(template.id()).orElse(null);
         Instant now = Instant.now();
+        Map<String, Object> settings = ServerListSchema.merge(
+                existing == null ? Map.of() : existing.settings(), template.settings());
+        boolean serverTemplate = isServerList(template.id(), existing);
+        // 服务器在线列表的 HTML 由配置编译而来：运营改的是表单，不是整段样式。
+        String html = serverTemplate ? ServerListSchema.html(settings) : template.html();
+        int width = serverTemplate ? ServerListSchema.widthOf(settings) : template.width();
         ImageTemplate value = new ImageTemplate(
                 existing == null ? UUID.randomUUID().toString() : existing.id(),
                 template.name(), template.version(), template.description(), template.author(),
                 template.category(), template.tags(),
                 template.cover().isBlank() && existing != null ? existing.cover() : template.cover(),
-                template.html(), template.width(),
+                template.background(),
+                html, width, settings,
                 existing == null ? now : existing.createdAt(),
                 now
         ).normalized();
@@ -121,6 +161,11 @@ public class TemplateService {
         }
         documents.save(COLLECTION, value.id(), value.toDocument());
         return value;
+    }
+
+    private static boolean isServerList(String id, ImageTemplate existing) {
+        String key = id != null && !id.isBlank() ? id : existing == null ? "" : existing.id();
+        return "builtin-server-list".equals(key);
     }
 
     public void delete(String id) {
@@ -162,7 +207,8 @@ public class TemplateService {
         String cover = publicPrefix + "/" + id + "/cover";
         documents.save(COLLECTION, id, new ImageTemplate(existing.id(), existing.name(), existing.version(),
                 existing.description(), existing.author(), existing.category(), existing.tags(),
-                cover, existing.html(), existing.width(), existing.createdAt(), Instant.now()).toDocument());
+                cover, existing.background(), existing.html(), existing.width(),
+                existing.settings(), existing.createdAt(), Instant.now()).toDocument());
         return cover;
     }
 
@@ -188,14 +234,147 @@ public class TemplateService {
 
     /** 按模板出图；变量里带 data URI 的图片不会被渲染容器拦截。 */
     public PluginRenderedImage render(String id, Map<String, Object> variables) {
+        return render(id, variables, null);
+    }
+
+    /**
+     * 带草稿配置的预览：后台编辑页在保存前也要看到效果，所以把表单里的
+     * settings 传进来，按它重新编译 HTML，不落库。
+     */
+    public PluginRenderedImage render(String id, Map<String, Object> variables, Map<String, Object> draftSettings) {
         ImageTemplate template = find(id).orElseThrow(() -> QqRobotException.notFound("模板不存在"));
-        Map<String, Object> scope = variables == null || variables.isEmpty()
-                ? BuiltinTemplates.sampleVariables(template.id(), avatars) : variables;
+        if (draftSettings != null && !draftSettings.isEmpty() && "builtin-server-list".equals(template.id())) {
+            Map<String, Object> settings = ServerListSchema.merge(template.settings(), draftSettings);
+            template = new ImageTemplate(template.id(), template.name(), template.version(),
+                    template.description(), template.author(), template.category(), template.tags(),
+                    template.cover(), template.background(), ServerListSchema.html(settings),
+                    ServerListSchema.widthOf(settings), settings, template.createdAt(), template.updatedAt());
+        }
+        Map<String, Object> scope;
+        if (variables == null || variables.isEmpty()) {
+            // 没传变量时按模板配置生成示例：服务器列表优先用真实服务器台账。
+            scope = servers != null ? servers.variables(template.settings())
+                    : BuiltinTemplates.sampleVariables(template.id(), avatars);
+            boolean emptyServers = !(scope.get("servers") instanceof List<?> rows) || rows.isEmpty();
+            if (emptyServers) {
+                scope = BuiltinTemplates.sampleVariables(template.id(), avatars);
+            }
+        } else {
+            scope = variables;
+        }
+        scope = withBackground(template, scope);
+        scope = applyApiSelection(template.settings(), scope);
         scope = fillAvatars(scope);
+        scope = fillPlaceholders(scope);
         String html = apply(template.html(), scope);
         PluginRenderedImage image = render.html(html, "#template-root", "图片模板");
         cachePreview(template.id(), image);
         return image;
+    }
+
+    /**
+     * 模板配置了背景来源（固定 URL 或随机图 API）且调用方没传背景时，
+     * 在后台抓图并转成 data URI——渲染容器不允许外链子资源。
+     */
+    private Map<String, Object> withBackground(ImageTemplate template, Map<String, Object> variables) {
+        Object current = variables.get("background");
+        if (current != null && !String.valueOf(current).isBlank()) {
+            return variables;
+        }
+        String source = template.background();
+        if (source == null || source.isBlank()) {
+            return variables;
+        }
+        String dataUri = backgrounds.dataUri(source);
+        if (dataUri.isBlank()) {
+            return variables;
+        }
+        Map<String, Object> result = new LinkedHashMap<>(variables);
+        result.put("background", dataUri);
+        return result;
+    }
+
+    /**
+     * 编辑器中的 API 开关只控制后端注入的数据范围；模板 HTML 仍然不能自行
+     * 访问网络。空数组保持兼容旧模板，表示使用全部可用数据源。
+     */
+    private static Map<String, Object> applyApiSelection(Map<String, Object> settings,
+                                                          Map<String, Object> variables) {
+        Object configured = settings == null ? null : settings.get("apiSources");
+        if (!(configured instanceof List<?> list) || list.isEmpty()) {
+            return variables;
+        }
+        java.util.Set<String> enabled = list.stream().map(String::valueOf).collect(java.util.stream.Collectors.toSet());
+        Map<String, Object> result = new LinkedHashMap<>(variables);
+        if (!enabled.contains("servers")) {
+            result.remove("servers");
+            result.remove("serverCount");
+            result.remove("total");
+        }
+        if (!enabled.contains("player")) {
+            result.remove("player");
+            result.remove("avatar");
+            result.remove("skin");
+        }
+        if (!enabled.contains("inventory")) {
+            result.remove("inventory");
+            result.remove("items");
+            result.remove("container");
+        }
+        if (!enabled.contains("textures")) {
+            result.remove("textures");
+            result.remove("textureSource");
+        }
+        if (!enabled.contains("skin")) {
+            result.remove("skin");
+        }
+        if (!enabled.contains("binding")) {
+            result.remove("binding");
+            result.remove("openid");
+            result.remove("account");
+        }
+        return result;
+    }
+
+    public void attachBridge(online.yudream.plugin.qqrobot.bridge.BridgeHub bridge) {
+        this.bridge = bridge;
+    }
+
+    /** 注入服务器台账（minecraft-server 插件）；为空时内置模板用示例数据。 */
+    public void attachServers(ServerListData servers) {
+        this.servers = servers;
+    }
+
+    /**
+     * 模板里写 {@code {{papi.player_health}}} 时，后台向服务端查询真实值。
+     *
+     * <p>渲染容器不能访问服务器，所以这一步必须在后台完成；查询失败时
+     * 保留空值，模板里对应的行会隐藏。变量里的 {@code player} 作为目标玩家，
+     * 没传玩家就不查，避免无意义地广播。</p>
+     */
+    private Map<String, Object> fillPlaceholders(Map<String, Object> variables) {
+        if (bridge == null) {
+            return variables;
+        }
+        Object player = variables.get("player");
+        String name = player == null ? "" : String.valueOf(player).trim();
+        if (name.isEmpty()) {
+            return variables;
+        }
+        List<String> keys = variables.keySet().stream()
+                .filter(key -> key.startsWith("papi."))
+                .toList();
+        if (keys.isEmpty()) {
+            return variables;
+        }
+        Map<String, String> values = bridge.queryPlaceholders(name,
+                keys.stream().map(key -> key.substring("papi.".length())).toList(), 5000);
+        if (values.isEmpty()) {
+            return variables;
+        }
+        Map<String, Object> result = new LinkedHashMap<>(variables);
+        values.forEach((placeholder, value) -> result.put("papi." + placeholder, value));
+        return result;
     }
 
     /**
@@ -372,8 +551,16 @@ public class TemplateService {
                     .orElse("");
         }
         row.put("cover", cover);
+        row.put("background", template.background());
         row.put("builtin", template.author().equals("系统模板"));
         row.put("variables", variables(template.html()));
+        row.put("settings", template.settings());
+        Map<String, Object> schema = new LinkedHashMap<>();
+        if ("builtin-server-list".equals(template.id())) {
+            schema.putAll(ServerListSchema.view());
+        }
+        schema.put("apiSources", TemplateApiCatalog.view());
+        row.put("schema", schema);
         row.put("width", template.width());
         row.put("updatedAt", template.updatedAt().toString());
         return row;

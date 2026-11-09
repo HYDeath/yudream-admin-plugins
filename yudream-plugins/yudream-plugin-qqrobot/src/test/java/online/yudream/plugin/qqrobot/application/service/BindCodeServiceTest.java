@@ -36,7 +36,7 @@ class BindCodeServiceTest {
     void alnumCodesUseConfiguredLength() {
         BindCodeService service = new BindCodeService();
         BindSettings settings = new BindSettings("dual", java.util.List.of(), 2, 5, 8, false,
-                true, true, "", "alnum", "绑定", "解绑", "a", "b", "c", "d", "e").normalized();
+                true, true, "", "alnum", "绑定", "解绑", "a", "b", "c", "d", "e", java.util.List.of()).normalized();
         String code = service.issue("Notch", "survival", "1", "Notch", settings).code();
 
         assertEquals(8, code.length());

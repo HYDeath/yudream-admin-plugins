@@ -9,8 +9,15 @@ public record BindingRecord(
         String socialName,
         String playerName,
         String serverId,
+        String groupId,
+        String connectionId,
         Instant boundAt
 ) {
+    /** Compatibility constructor for records written before group-aware card rules. */
+    public BindingRecord(String id, String socialId, String socialName, String playerName,
+                         String serverId, Instant boundAt) {
+        this(id, socialId, socialName, playerName, serverId, "", "", boundAt);
+    }
     public static String key(String socialId, String playerName) {
         return socialId + ":" + playerName.toLowerCase();
     }
@@ -22,6 +29,8 @@ public record BindingRecord(
                 "socialName", socialName == null ? "" : socialName,
                 "playerName", playerName,
                 "serverId", serverId == null ? "" : serverId,
+                "groupId", groupId == null ? "" : groupId,
+                "connectionId", connectionId == null ? "" : connectionId,
                 "boundAt", boundAt.toString()
         );
     }
@@ -33,6 +42,8 @@ public record BindingRecord(
                 String.valueOf(document.getOrDefault("socialName", "")),
                 String.valueOf(document.get("playerName")),
                 String.valueOf(document.getOrDefault("serverId", "")),
+                String.valueOf(document.getOrDefault("groupId", "")),
+                String.valueOf(document.getOrDefault("connectionId", "")),
                 Instant.parse(String.valueOf(document.getOrDefault("boundAt", Instant.now().toString())))
         );
     }

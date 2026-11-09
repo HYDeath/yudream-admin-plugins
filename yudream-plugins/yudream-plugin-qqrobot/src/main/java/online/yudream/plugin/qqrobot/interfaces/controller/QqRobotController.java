@@ -33,9 +33,35 @@ public class QqRobotController {
         return http.testBot(request);
     }
 
+    /** 机器人接入状态：连接来自宿主「QQ 消息平台」，插件不重复保存凭证。 */
+    @PluginHttpEndpoint(method = "GET", path = "/admin/settings/bot/connections", permission = MANAGE)
+    public PluginHttpResponse botConnections() {
+        return http.botConnections();
+    }
+
     @PluginHttpEndpoint(method = "PUT", path = "/admin/settings/bind", permission = MANAGE)
     public PluginHttpResponse saveBindSettings(PluginHttpRequest request) {
         return http.saveBindSettings(request);
+    }
+
+    @PluginHttpEndpoint(method = "GET", path = "/admin/settings/commands", permission = MANAGE)
+    public PluginHttpResponse commandSettings() {
+        return http.commandSettings();
+    }
+
+    @PluginHttpEndpoint(method = "PUT", path = "/admin/settings/commands", permission = MANAGE)
+    public PluginHttpResponse saveCommandSettings(PluginHttpRequest request) {
+        return http.saveCommandSettings(request);
+    }
+
+    @PluginHttpEndpoint(method = "GET", path = "/admin/settings/integrations", permission = MANAGE)
+    public PluginHttpResponse integrationSettings() {
+        return http.integrationSettings();
+    }
+
+    @PluginHttpEndpoint(method = "PUT", path = "/admin/settings/integrations", permission = MANAGE)
+    public PluginHttpResponse saveIntegrationSettings(PluginHttpRequest request) {
+        return http.saveIntegrationSettings(request);
     }
 
     @PluginHttpEndpoint(method = "GET", path = "/admin/groups", permission = MANAGE)
@@ -143,6 +169,12 @@ public class QqRobotController {
         return http.templates(request);
     }
 
+    /** 模板配置里的服务器筛选：直接列出 minecraft-server 的服务器。 */
+    @PluginHttpEndpoint(method = "GET", path = "/admin/servers", permission = MANAGE)
+    public PluginHttpResponse servers() {
+        return http.servers();
+    }
+
     @PluginHttpEndpoint(method = "GET", path = "/admin/templates/{id}", permission = MANAGE)
     public PluginHttpResponse template(PluginHttpRequest request) {
         return http.template(request);
@@ -172,6 +204,12 @@ public class QqRobotController {
     @PluginHttpEndpoint(method = "POST", path = "/templates/{id}/render", permission = "")
     public PluginHttpResponse renderTemplate(PluginHttpRequest request) {
         return http.renderTemplate(request);
+    }
+
+    /** 同上，供后台编辑页用 GET 预览（草稿配置走查询参数不现实，仅支持无草稿预览）。 */
+    @PluginHttpEndpoint(method = "GET", path = "/templates/{id}/render", permission = MANAGE)
+    public PluginHttpResponse renderTemplatePreview(PluginHttpRequest request) {
+        return http.renderTemplatePreview(request);
     }
 
     /** 桥接服务端上报模板渲染结果（如群在线列表），供 QQ 侧取图片地址。 */

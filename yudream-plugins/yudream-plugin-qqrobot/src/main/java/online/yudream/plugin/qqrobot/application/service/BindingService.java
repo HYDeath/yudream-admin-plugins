@@ -21,6 +21,11 @@ public class BindingService {
     }
 
     public BindingRecord bind(String socialId, String socialName, String playerName, String serverId) {
+        return bind(socialId, socialName, playerName, serverId, "", "");
+    }
+
+    public BindingRecord bind(String socialId, String socialName, String playerName, String serverId,
+                              String groupId, String connectionId) {
         if (socialId == null || socialId.isBlank()) {
             throw QqRobotException.badRequest("社交账号不能为空");
         }
@@ -38,7 +43,8 @@ public class BindingService {
             throw QqRobotException.conflict("该社交账号最多绑定 " + current.accountsPerSocial() + " 个游戏账号");
         }
         BindingRecord record = new BindingRecord(BindingRecord.key(socialId, playerName), socialId,
-                socialName == null ? "" : socialName, playerName, serverId == null ? "" : serverId, Instant.now());
+                socialName == null ? "" : socialName, playerName, serverId == null ? "" : serverId,
+                groupId == null ? "" : groupId, connectionId == null ? "" : connectionId, Instant.now());
         documents.save(COLLECTION, record.id(), record.toDocument());
         return record;
     }
@@ -47,6 +53,13 @@ public class BindingService {
         Optional<BindingRecord> record = find(socialId, playerName);
         record.ifPresent(value -> documents.delete(COLLECTION, value.id()));
         return record.isPresent();
+    }
+
+    /** Remove every game account owned by one social identity, used by member-leave cleanup. */
+    public List<BindingRecord> unbindAll(String socialId) {
+        List<BindingRecord> records = bySocial(socialId, 1, 200);
+        records.forEach(record -> documents.delete(COLLECTION, record.id()));
+        return records;
     }
 
     public Optional<BindingRecord> find(String socialId, String playerName) {

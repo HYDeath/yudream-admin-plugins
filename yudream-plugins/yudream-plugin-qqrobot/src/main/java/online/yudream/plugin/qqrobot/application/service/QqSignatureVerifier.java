@@ -6,7 +6,6 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.HexFormat;
 
 /**
@@ -46,7 +45,13 @@ public final class QqSignatureVerifier {
             return false;
         }
         try {
-            byte[] signature = Base64.getDecoder().decode(signatureBase64.trim());
+            // QQ 官方回调文档规定 X-Signature-Ed25519 是 64 字节签名的
+            // 128 位十六进制文本，不是 Base64。严格按 hex 解码，避免
+            // 错误接受格式相似但无法验证的请求。
+            byte[] signature = HexFormat.of().parseHex(signatureBase64.trim());
+            if (signature.length != 64 || (signature[63] & 0xE0) != 0) {
+                return false;
+            }
             PublicKey key = publicKey(publicKeyHex);
             Signature verifier = Signature.getInstance("Ed25519");
             verifier.initVerify(key);

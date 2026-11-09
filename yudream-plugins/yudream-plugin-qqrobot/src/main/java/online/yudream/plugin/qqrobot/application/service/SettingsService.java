@@ -2,8 +2,10 @@ package online.yudream.plugin.qqrobot.application.service;
 
 import online.yudream.base.plugin.spi.system.storage.PluginDocumentStore;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
+import online.yudream.plugin.qqrobot.domain.CommandSettings;
 import online.yudream.plugin.qqrobot.domain.GroupSettings;
 import online.yudream.plugin.qqrobot.domain.QqBotSettings;
+import online.yudream.plugin.qqrobot.domain.QqIntegrationSettings;
 
 import java.util.List;
 
@@ -12,6 +14,8 @@ public class SettingsService {
     private static final String BIND_ID = "bind";
     private static final String GROUP_PREFIX = "group:";
     private static final String BOT_ID = "qqbot";
+    private static final String COMMAND_ID = "commands";
+    private static final String INTEGRATION_ID = "integrations";
 
     private final PluginDocumentStore documents;
 
@@ -55,10 +59,45 @@ public class SettingsService {
             throw QqRobotException.badRequest("机器人设置不能为空");
         }
         QqBotSettings normalized = settings.normalized();
-        if (normalized.enabled() && normalized.appId().isBlank()) {
-            throw QqRobotException.badRequest("启用机器人前必须填写 AppID");
-        }
+        // 接入凭证由宿主「QQ 消息平台」能力统一管理，这里只保存回复策略，
+        // 不再强制填写 AppID（否则和宿主连接配置互相矛盾）。
         documents.save(COLLECTION, BOT_ID, normalized.toDocument());
+        return normalized;
+    }
+
+    public CommandSettings commandSettings() {
+        return documents.findById(COLLECTION, COMMAND_ID)
+                .map(CommandSettings::fromDocument)
+                .orElseGet(CommandSettings::defaults)
+                .normalized();
+    }
+
+    public CommandSettings saveCommandSettings(CommandSettings settings) {
+        if (settings == null) {
+            throw QqRobotException.badRequest("指令设置不能为空");
+        }
+        CommandSettings normalized = settings.normalized();
+        for (CommandSettings.CommandBinding command : normalized.commands()) {
+            if (command.triggers().isEmpty() && command.enabled()) {
+                throw QqRobotException.badRequest("指令「" + command.label() + "」已启用但没有触发词");
+            }
+        }
+        documents.save(COLLECTION, COMMAND_ID, normalized.toDocument());
+        return normalized;
+    }
+
+    public QqIntegrationSettings integrationSettings() {
+        return documents.findById(COLLECTION, INTEGRATION_ID)
+                .map(QqIntegrationSettings::fromDocument)
+                .orElseGet(QqIntegrationSettings::defaults);
+    }
+
+    public QqIntegrationSettings saveIntegrationSettings(QqIntegrationSettings settings) {
+        if (settings == null) {
+            throw QqRobotException.badRequest("联动设置不能为空");
+        }
+        QqIntegrationSettings normalized = settings.normalized();
+        documents.save(COLLECTION, INTEGRATION_ID, normalized.toDocument());
         return normalized;
     }
 

@@ -10,16 +10,20 @@ import online.yudream.base.plugin.spi.core.YuDreamPlugin;
 import online.yudream.base.plugin.spi.ws.PluginWsHandshake;
 import online.yudream.base.plugin.spi.ws.PluginWsHandler;
 import online.yudream.base.plugin.spi.ws.PluginWsSession;
+import online.yudream.base.plugin.spi.system.messaging.PluginInteractionFilter;
 import online.yudream.plugin.qqrobot.application.service.BindCodeService;
 import online.yudream.plugin.qqrobot.application.service.AvatarService;
 import online.yudream.plugin.qqrobot.application.service.BindingService;
 import online.yudream.plugin.qqrobot.application.service.GroupService;
 import online.yudream.plugin.qqrobot.application.service.ItemCardRenderer;
 import online.yudream.plugin.qqrobot.application.service.InventoryPreview;
+import online.yudream.plugin.qqrobot.application.service.MinecraftServerDirectory;
 import online.yudream.plugin.qqrobot.application.service.NoticeService;
 import online.yudream.plugin.qqrobot.application.service.QqBotService;
+import online.yudream.plugin.qqrobot.application.service.RegistrationReviewIntegration;
 import online.yudream.plugin.qqrobot.application.service.RenderSupport;
 import online.yudream.plugin.qqrobot.application.service.ResourceService;
+import online.yudream.plugin.qqrobot.application.service.ServerListData;
 import online.yudream.plugin.qqrobot.application.service.SettingsService;
 import online.yudream.plugin.qqrobot.application.service.TemplateService;
 import online.yudream.plugin.qqrobot.bridge.BridgeHub;
@@ -41,6 +45,12 @@ import java.util.List;
         @PluginRoute(path = "/platform/plugins/qqrobot/bind", name = "platform-plugin-qqrobot-bind",
                 title = "绑定设置", icon = "i-ri:link", component = "qqrobot/BindSettings",
                 permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 10),
+        @PluginRoute(path = "/platform/plugins/qqrobot/bot", name = "platform-plugin-qqrobot-bot",
+                title = "机器人设置", icon = "i-ri:robot-2-line", component = "qqrobot/BotSettings",
+                permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 12),
+        @PluginRoute(path = "/platform/plugins/qqrobot/commands", name = "platform-plugin-qqrobot-commands",
+                title = "指令设置", icon = "i-ri:terminal-box-line", component = "qqrobot/Commands",
+                permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 15),
         @PluginRoute(path = "/platform/plugins/qqrobot/groups", name = "platform-plugin-qqrobot-groups",
                 title = "群组管理", icon = "i-ri:team-line", component = "qqrobot/Groups",
                 permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 20),
@@ -59,7 +69,7 @@ import java.util.List;
 })
 public class QqRobotPlugin implements YuDreamPlugin {
     public static final String CODE = "qqrobot";
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.6.0";
     public static final String MANAGE_PERMISSION = "plugin:qqrobot:manage";
 
     private BridgeHub bridge;
@@ -69,7 +79,8 @@ public class QqRobotPlugin implements YuDreamPlugin {
         SettingsService settings = new SettingsService(context.documents());
         BindCodeService codes = new BindCodeService();
         BindingService bindings = new BindingService(context.documents(), settings);
-        GroupService groups = new GroupService(settings, context.framework().messaging());
+        GroupService groups = new GroupService(settings, context.framework().messaging(),
+                context.framework().messagingRaw());
         // 出图统一走宿主「消息渲染」能力（独立 Headless Chromium），插件内不启动浏览器。
         RenderSupport render = new RenderSupport(context.framework().render());
         ResourceService resources = new ResourceService(context.documents(), context.files(), render);
@@ -89,6 +100,11 @@ public class QqRobotPlugin implements YuDreamPlugin {
         TemplateService templates = new TemplateService(context.documents(), context.files(), render,
                 "/api/plugins/qqrobot/templates", avatars);
         templates.seedDefaults();
+        templates.attachBridge(bridge);
+        // 服务器在线列表的数据来自 minecraft-server 插件；桥接只补玩家名册。
+        ServerListData serverData = new ServerListData(new MinecraftServerDirectory(context));
+        serverData.attachBridge(bridge);
+        templates.attachServers(serverData);
         // 模板列表在首次渲染前没有封面，启动时后台补一遍，避免市场里是空卡片。
         templates.warmCovers();
 
@@ -102,13 +118,27 @@ public class QqRobotPlugin implements YuDreamPlugin {
                 return java.util.Optional.empty();
             }
         };
-        QqBotService qqBot = new QqBotService(settings, codes, notices, templates, secretReader,
-                new online.yudream.plugin.qqrobot.application.service.QqApiClient());
+        RegistrationReviewIntegration registration = new RegistrationReviewIntegration(context, settings);
+        QqBotService qqBot = new QqBotService(settings, codes, notices, templates, bindings, secretReader,
+                new online.yudream.plugin.qqrobot.application.service.QqApiClient(), registration);
+        qqBot.attachBridge(bridge);
+        qqBot.attachGroups(groups);
+        qqBot.attachMessaging(context.framework().messaging());
+        // 自有快捷词未命中时，把消息交给宿主统一命令总线，复用其它插件的 @PluginCommand。
+        qqBot.attachCommandService(context.framework().commands(), context.framework().users());
+        // 入站统一由宿主消息端口分发：私聊/群聊指令、好友添加、入群通知。
+        // 官方 Webhook 仍保留，兼容只在开放平台回调里落事件的老部署。
+        context.onDispose(context.interactions().onMessage(
+                new PluginInteractionFilter(java.util.Set.of("message_receive"), null, null, null),
+                qqBot::onEvent));
+        context.onDispose(context.interactions().onNative(
+                new PluginInteractionFilter(java.util.Set.of("friend_add", "group_request", "group_member_decrease"), null, null, null),
+                qqBot::onEvent));
         context.registerHttpController(new QqBotController(qqBot, settings, secretReader));
 
         context.registerHttpController(new QqRobotController(
                 new QqRobotHttpFacade(settings, bindings, codes, groups, resources, bridge, preview, render, notices,
-                        templates, context.secrets())));
+                        templates, context.secrets(), serverData, registration)));
         context.registerWebSocketHandler(BridgeHub.PATH, new BridgeHandler(bridge));
     }
 

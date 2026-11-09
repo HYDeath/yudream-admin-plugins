@@ -21,14 +21,27 @@ public record ImageTemplate(
         String category,
         List<String> tags,
         String cover,
+        String background,
         String html,
         int width,
+        Map<String, Object> settings,
         Instant createdAt,
         Instant updatedAt
 ) {
     public static final int MIN_WIDTH = 320;
     public static final int MAX_WIDTH = 1920;
     public static final int MAX_HTML_BYTES = 512 * 1024;
+
+    /**
+     * 兼容旧调用方（内置模板与测试）的构造：没有结构化配置时用空表，
+     * 归一化阶段会按模板类型补默认值。
+     */
+    public ImageTemplate(String id, String name, String version, String description, String author,
+                         String category, List<String> tags, String cover, String background, String html,
+                         int width, Instant createdAt, Instant updatedAt) {
+        this(id, name, version, description, author, category, tags, cover, background, html, width,
+                Map.of(), createdAt, updatedAt);
+    }
 
     public ImageTemplate normalized() {
         return new ImageTemplate(
@@ -41,8 +54,10 @@ public record ImageTemplate(
                 tags == null ? List.of() : tags.stream().filter(tag -> tag != null && !tag.isBlank())
                         .map(String::trim).distinct().limit(8).toList(),
                 cover == null ? "" : cover,
+                background == null ? "" : background.trim(),
                 html == null ? "" : html,
                 Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width)),
+                settings == null ? Map.of() : new LinkedHashMap<>(settings),
                 createdAt,
                 updatedAt
         );
@@ -58,8 +73,10 @@ public record ImageTemplate(
         document.put("category", category);
         document.put("tags", tags);
         document.put("cover", cover);
+        document.put("background", background);
         document.put("html", html);
         document.put("width", width);
+        document.put("settings", settings);
         document.put("createdAt", createdAt == null ? Instant.now().toString() : createdAt.toString());
         document.put("updatedAt", updatedAt == null ? Instant.now().toString() : updatedAt.toString());
         return document;
@@ -69,6 +86,8 @@ public record ImageTemplate(
     public static ImageTemplate fromDocument(Map<String, Object> document) {
         List<String> tags = document.get("tags") instanceof List<?> list
                 ? list.stream().map(String::valueOf).toList() : List.of();
+        Map<String, Object> settings = document.get("settings") instanceof Map<?, ?> map
+                ? new LinkedHashMap<>((Map<String, Object>) map) : Map.of();
         return new ImageTemplate(
                 text(document.get("id")),
                 text(document.get("name")),
@@ -78,8 +97,10 @@ public record ImageTemplate(
                 text(document.get("category")),
                 tags,
                 text(document.get("cover")),
+                text(document.get("background")),
                 text(document.get("html")),
                 number(document.get("width"), 640),
+                settings,
                 instant(document.get("createdAt")),
                 instant(document.get("updatedAt"))
         ).normalized();

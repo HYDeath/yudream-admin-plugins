@@ -1,14 +1,17 @@
 import type { YuDreamPluginSdk } from '@yudream/plugin-sdk'
 import type {
   BindSettings,
+  BotConnectionState,
   BridgeState,
   ConnectionOption,
   QqRobotNotice,
   QqBotSettings,
+  QqIntegrationSettings,
   QqBotTestResult,
   GroupSettings,
   ImageTemplateDetail,
   ImageTemplateSummary,
+  CommandSettings,
   PageResult,
   RenderStatus,
   ResourceCard,
@@ -20,10 +23,22 @@ export function createQqRobotApi(sdk: YuDreamPluginSdk) {
     saveBindSettings: (settings: BindSettings) =>
       sdk.http.request<BindSettings>('/admin/settings/bind', { method: 'PUT', data: settings }),
 
+    commandSettings: () => sdk.http.get<CommandSettings>('/admin/settings/commands'),
+    saveCommandSettings: (settings: CommandSettings) =>
+      sdk.http.request<CommandSettings>('/admin/settings/commands', { method: 'PUT', data: settings }),
+
+    integrationSettings: () => sdk.http.get<QqIntegrationSettings>('/admin/settings/integrations'),
+    saveIntegrationSettings: (settings: QqIntegrationSettings) =>
+      sdk.http.request<QqIntegrationSettings>('/admin/settings/integrations', { method: 'PUT', data: settings }),
+
     botSettings: () => sdk.http.get<QqBotSettings>('/admin/settings/bot'),
     saveBotSettings: (settings: QqBotSettings & { appSecret?: string, webhookPublicKey?: string }) =>
       sdk.http.request<QqBotSettings>('/admin/settings/bot', { method: 'PUT', data: settings }),
     testBot: () => sdk.http.request<QqBotTestResult>('/admin/settings/bot/test', { method: 'POST', data: {} }),
+    botConnections: () => sdk.http.get<BotConnectionState>('/admin/settings/bot/connections'),
+
+    servers: () => sdk.http.get<{ available: boolean, servers: { id: string, name: string, online: string, edition: string }[] }>(
+      '/admin/servers'),
 
     groups: (page: number, size: number) =>
       sdk.http.get<PageResult<GroupSettings>>(`/admin/groups?page=${page}&size=${size}`),

@@ -3,6 +3,7 @@ package online.yudream.plugin.qqrobot.application.service;
 import online.yudream.plugin.qqrobot.domain.ImageTemplate;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,11 +21,13 @@ final class BuiltinTemplates {
                 new ImageTemplate("builtin-server-list", "服务器在线列表", "1.0.0",
                         "按服务器分组的在线玩家名册，含头像与人数统计；支持自定义背景图和标题。",
                         "系统模板", "服务器",
-                        List.of("服务器", "在线列表", "名册"), "", serverListHtml(), 900, now, now).normalized(),
+                        List.of("服务器", "在线列表", "名册"), "", "", serverListHtml(),
+                        900, ServerListSchema.defaults(), now, now).normalized(),
                 new ImageTemplate("builtin-player-card", "玩家信息卡", "1.0.0",
                         "单玩家资料卡：头像、皮肤、在线时长与绑定状态，适合进服/查询场景。",
                         "系统模板", "玩家",
-                        List.of("玩家", "信息卡", "资料"), "", playerCardHtml(), 640, now, now).normalized()
+                        List.of("玩家", "信息卡", "资料"), "", "", playerCardHtml(),
+                        640, Map.of(), now, now).normalized()
         );
     }
 

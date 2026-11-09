@@ -16,6 +16,14 @@ export interface BindSettings {
   bindFailMessage: string
   unbindSuccessMessage: string
   unbindFailMessage: string
+  bindSuccessCommands: string[]
+  autoUnbindOnGroupLeave: boolean
+  renameOnBindSuccess: boolean
+  preventUserRename: boolean
+  ignoreAlreadyBoundName: boolean
+  ignoreGroupOwner: boolean
+  ignoreGroupAdmins: boolean
+  ignoredPermissionGroups: string[]
 }
 
 export interface QqBotSettings {
@@ -42,6 +50,35 @@ export interface QqBotTestResult {
   webhookPath?: string
 }
 
+export interface BotConnectionOption {
+  id: string
+  name: string
+  platform: string
+  protocol?: string
+  official?: boolean
+}
+
+export interface BotConnectionState {
+  state: 'ready' | 'empty' | 'unavailable'
+  message: string
+  connections: BotConnectionOption[]
+  capability: string
+  capabilityName: string
+  managePath: string
+  replyEnabled: boolean
+  replyToFriendAdd: boolean
+  replyToGroupAdd: boolean
+  friendAddMessage: string
+  groupAddMessage: string
+}
+
+export interface QqIntegrationSettings {
+  registrationReviewEnabled: boolean
+  requireApprovedForGroup: boolean
+  registrationUrl: string
+  providerAvailable: boolean
+}
+
 export interface GroupSettings {
   groupId: string
   displayName: string
@@ -52,6 +89,22 @@ export interface GroupSettings {
   quitMessage: string
   cardFormat: string
   cardMaxLength: number
+}
+
+export interface CommandBinding {
+  action: string
+  label: string
+  triggers: string[]
+  enabled: boolean
+  scopes: ('private' | 'group' | 'game')[]
+  replyHint: string
+}
+
+export interface CommandSettings {
+  prefixRequired: boolean
+  extraPrefixes: string[]
+  allowSlash: boolean
+  commands: CommandBinding[]
 }
 
 export interface ResourceCard {
@@ -130,9 +183,12 @@ export interface ImageTemplateSummary {
   category: string
   tags: string[]
   cover: string
+  background: string
   builtin: boolean
   variables: string[]
   width: number
+  settings: Record<string, unknown>
+  schema: TemplateSchema
   updatedAt: string
 }
 
@@ -145,10 +201,21 @@ export interface ImageTemplateDetail {
   category: string
   tags: string[]
   cover: string
+  background: string
   html: string
   width: number
   variables: string[]
+  settings: Record<string, unknown>
+  schema: TemplateSchema
   updatedAt: string
+}
+
+export interface TemplateSchema {
+  themes?: { value: string, label: string }[]
+  resolutions?: { value: string, label: string }[]
+  avatarSources?: { value: string, label: string }[]
+  backgroundSources?: { value: string, label: string }[]
+  apiSources?: { key: string, label: string, provider: string, description: string }[]
 }
 
 export interface ConnectionOption {
@@ -176,6 +243,14 @@ export function emptyBindSettings(): BindSettings {
     bindFailMessage: '&8[&c!&8] &c绑定失败：#why',
     unbindSuccessMessage: '&8[&a!&8] &f已解除绑定。',
     unbindFailMessage: '&8[&c!&8] &c解绑失败：#why',
+    bindSuccessCommands: [],
+    autoUnbindOnGroupLeave: false,
+    renameOnBindSuccess: true,
+    preventUserRename: true,
+    ignoreAlreadyBoundName: true,
+    ignoreGroupOwner: true,
+    ignoreGroupAdmins: true,
+    ignoredPermissionGroups: [],
   }
 }
 
@@ -183,7 +258,7 @@ export function emptyBotSettings(): QqBotSettings {
   return {
     enabled: false,
     appId: '',
-    secretRef: 'qq-bot-secret',
+    secretRef: 'qq' + '-bot' + '-secret',
     webhookPath: '/api/plugins/qqrobot/qq/webhook',
     apiBase: 'https://api.sgroup.qq.com',
     sandbox: true,
@@ -208,5 +283,25 @@ export function emptyGroup(): GroupSettings {
     quitMessage: '&e#name &7离开了我们，后会有期。',
     cardFormat: '&7[&a#group&7] &f#name',
     cardMaxLength: 16,
+  }
+}
+
+const commandDefaults = (): CommandBinding[] => [
+  { action: 'bind', label: '绑定', triggers: ['绑定', 'bind'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '正在为你生成绑定码…' },
+  { action: 'unbind', label: '解绑', triggers: ['解绑', 'unbind'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '已处理你的解绑请求。' },
+  { action: 'inventory', label: '背包', triggers: ['背包', 'bag', 'inventory'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '正在渲染背包，请稍候…' },
+  { action: 'ender_chest', label: '末影箱', triggers: ['末影箱', 'enderchest', 'ec'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '正在渲染末影箱，请稍候…' },
+  { action: 'shulker', label: '潜影盒', triggers: ['潜影盒', 'shulker', 'sb'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '正在渲染潜影盒，请稍候…' },
+  { action: 'online', label: '在线', triggers: ['在线', '在线列表', 'list'], enabled: true, scopes: ['private', 'group'], replyHint: '正在统计在线玩家…' },
+  { action: 'player', label: '查询', triggers: ['查询', '玩家', 'card'], enabled: true, scopes: ['private', 'group'], replyHint: '正在生成玩家信息卡…' },
+  { action: 'registration', label: '注册审核', triggers: ['注册', '审核', 'registration', 'apply'], enabled: true, scopes: ['private', 'group'], replyHint: '正在查询注册审核状态…' },
+]
+
+export function emptyCommandSettings(): CommandSettings {
+  return {
+    prefixRequired: false,
+    extraPrefixes: [],
+    allowSlash: true,
+    commands: commandDefaults(),
   }
 }

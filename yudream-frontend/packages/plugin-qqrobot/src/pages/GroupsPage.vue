@@ -120,8 +120,15 @@ onMounted(async () => {
       </template>
     </YdPageHeader>
     <div class="qqrobot-body">
-      <div v-if="!groups.length && !loading" class="qqrobot-empty">
-        <YdEmpty description="还没有群组策略，新增一个群号即可开始。" />
+      <div v-if="!groups.length && !loading" class="qqrobot-doc-section qqrobot-groups-blank">
+        <YdEmpty description="还没有群组策略。把机器人拉进群后新增群号，就能单独配置绑定、群名片和退群提示。">
+          <YdButton @click="openCreate">新增群组</YdButton>
+        </YdEmpty>
+        <div class="qqrobot-groups-hints">
+          <div><strong>群名片同步</strong><span>绑定后自动改成「[服务器] 游戏ID」这类格式，可自定义模板与长度。</span></div>
+          <div><strong>退群提示</strong><span>玩家退群时在群里发一条消息，支持 #name / #group 占位符。</span></div>
+          <div><strong>按群覆盖</strong><span>未配置的群继承全局绑定设置，只有需要差异化时才新增。</span></div>
+        </div>
       </div>
       <div v-else class="qqrobot-group-list">
         <article v-for="group in groups" :key="group.groupId" class="qqrobot-group-card">
