@@ -77,11 +77,17 @@ onBeforeUnmount(() => {
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="渲染预览" description="复用后台「消息渲染」能力出图：背包、容器与物品卡，不依赖服务端连接">
-      <template #actions>
-        <YdButton variant="outline" :loading="loading || checking" @click="refresh">重新渲染</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
+      <div class="qqrobot-toolbar">
+        <div class="qqrobot-toolbar-info">
+          <strong>渲染自检</strong>
+          <span class="qqrobot-muted">用固定示例数据出三张图，验证渲染链路是否可用</span>
+        </div>
+        <div class="qqrobot-toolbar-actions">
+          <YdButton variant="outline" :loading="loading || checking" @click="refresh">重新渲染</YdButton>
+        </div>
+      </div>
       <div v-if="status" class="qqrobot-render-bar" :class="status.ready ? 'ok' : 'bad'">
         <div class="qqrobot-render-main">
           <span class="qqrobot-render-dot" />

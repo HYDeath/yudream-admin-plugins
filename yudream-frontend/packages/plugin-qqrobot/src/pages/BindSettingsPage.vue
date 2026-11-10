@@ -107,10 +107,6 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="绑定设置" description="社交账号与游戏账号的绑定方式、验证码与消息模板">
-      <template #actions>
-        <YdButton variant="outline" :disabled="saving" @click="load">重置</YdButton>
-        <YdButton :loading="saving" @click="save">保存</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
       <YdLoadingOverlay :loading="loading">
@@ -302,6 +298,13 @@ onMounted(load)
           </div>
         </div>
       </YdLoadingOverlay>
+      <div class="qqrobot-save-bar">
+        <span class="qqrobot-muted">修改后需保存才会生效</span>
+        <div class="qqrobot-save-actions">
+          <YdButton variant="outline" :disabled="saving || loading" @click="load">重置</YdButton>
+          <YdButton :loading="saving" @click="save">保存设置</YdButton>
+        </div>
+      </div>
     </div>
   </div>
 </template>

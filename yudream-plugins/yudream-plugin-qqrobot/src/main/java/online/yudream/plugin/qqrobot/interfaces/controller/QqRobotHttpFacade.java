@@ -6,6 +6,7 @@ import online.yudream.base.plugin.spi.http.PluginHttpRequest;
 import online.yudream.base.plugin.spi.http.PluginHttpResponse;
 import online.yudream.plugin.qqrobot.application.service.BindCodeService;
 import online.yudream.plugin.qqrobot.application.service.BindingService;
+import online.yudream.plugin.qqrobot.application.service.CommandMatcher;
 import online.yudream.plugin.qqrobot.application.service.QqRobotException;
 import online.yudream.plugin.qqrobot.application.service.GroupService;
 import online.yudream.plugin.qqrobot.application.service.InventoryPreview;
@@ -142,8 +143,17 @@ public class QqRobotHttpFacade {
     public PluginHttpResponse saveBotSettings(PluginHttpRequest request) {
         return handle(() -> {
             JsonNode body = read(request);
+            // 局部更新：旧版前端只提交回复策略，缺失字段按当前值补齐，
+            // 避免 ConvertValue 把 appId / apiBase / sandbox 置空。
+            QqBotSettings current = settings.botSettings();
+            Map<String, Object> merged = new LinkedHashMap<>(current.toDocument());
+            body.fields().forEachRemaining(entry -> {
+                if (!entry.getValue().isNull()) {
+                    merged.put(entry.getKey(), mapper.convertValue(entry.getValue(), Object.class));
+                }
+            });
             QqBotSettings saved = settings.saveBotSettings(
-                    mapper.convertValue(body, QqBotSettings.class));
+                    mapper.convertValue(merged, QqBotSettings.class));
             String secret = body.path("appSecret").asText("");
             if (!secret.isBlank()) {
                 secrets.put(saved.appSecretRef(), secret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -222,6 +232,38 @@ public class QqRobotHttpFacade {
                     mapper.convertValue(read(request), CommandSettings.class));
             broadcastCommands(saved);
             return PluginHttpResponse.ok(saved);
+        });
+    }
+
+    /**
+     * 指令模拟：用当前（或请求里临时传入的未保存）指令配置跑一次匹配。
+     * 只返回命中的动作/参数，不执行绑定、出图等副作用。
+     */
+    public PluginHttpResponse testCommand(PluginHttpRequest request) {
+        return handle(() -> {
+            JsonNode body = read(request);
+            String text = body.path("text").asText("");
+            String scope = body.path("scope").asText("group");
+            if (text.isBlank()) {
+                throw QqRobotException.badRequest("text 不能为空");
+            }
+            CommandSettings draft = body.path("commands").isObject()
+                    ? mapper.convertValue(body.path("commands"), CommandSettings.class)
+                    : settings.commandSettings();
+            CommandMatcher.Match match = new CommandMatcher(draft).match(text, scope);
+            if (match == null) {
+                return PluginHttpResponse.ok(Map.of("matched", false, "text", text, "scope", scope));
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("matched", true);
+            result.put("text", text);
+            result.put("scope", scope);
+            result.put("action", match.action());
+            result.put("label", match.label());
+            result.put("args", match.args());
+            result.put("replyHint", match.command().replyHint());
+            result.put("willReply", !match.command().replyHint().isBlank());
+            return PluginHttpResponse.ok(result);
         });
     }
 
@@ -367,7 +409,10 @@ public class QqRobotHttpFacade {
 
     public PluginHttpResponse deleteBinding(PluginHttpRequest request) {
         return handle(() -> {
-            boolean deleted = bindings.unbind(pathVar(request, "socialId"), pathVar(request, "player"));
+            // 两个路径变量不能都用「最后一段」推导：优先读显式参数，路径方式按点位取。
+            String socialId = firstNonBlank(query(request, "socialId"), pathAt(request, -2));
+            String player = firstNonBlank(query(request, "player"), lastSegment(request));
+            boolean deleted = bindings.unbind(socialId, player);
             return PluginHttpResponse.ok(Map.of("deleted", deleted));
         });
     }
@@ -653,6 +698,21 @@ public class QqRobotHttpFacade {
             return parts[parts.length - 2];
         }
         return last;
+    }
+
+    private static String firstNonBlank(String primary, String fallback) {
+        return primary == null || primary.isBlank() ? fallback : primary;
+    }
+
+    /** 取路径倒数第 N 段（-1 为最后一段），越界返回空串。 */
+    private static String pathAt(PluginHttpRequest request, int offset) {
+        String[] parts = request.path().split("/");
+        int index = parts.length + offset;
+        return index >= 0 && index < parts.length ? parts[index] : "";
+    }
+
+    private static String lastSegment(PluginHttpRequest request) {
+        return pathAt(request, -1);
     }
 
     @FunctionalInterface

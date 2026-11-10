@@ -101,7 +101,8 @@ public class BridgeHub {
                 secretPersistent = false;
             }
             generatedAt = Instant.now();
-            notice.accept("令牌|桥接令牌已自动生成（" + fingerprint(value) + "），请同步到服务端插件 config.yml；"
+            // 通知流是公开只读接口，令牌片段同样属于凭证信息，只写“已生成”，不写指纹。
+            notice.accept("令牌|桥接令牌已自动生成，请到「桥接」页复制并同步到服务端插件 config.yml；"
                     + (secretPersistent ? "" : "密钥存储不可用，重启后台后令牌会变化。"));
             return token;
         }
@@ -159,7 +160,7 @@ public class BridgeHub {
             generatedAt = Instant.now();
             rotatedBy = operator == null ? "" : operator;
             sessions.values().forEach(session -> session.close(1008, "桥接令牌已轮换"));
-            notice.accept("令牌|桥接令牌已轮换（" + fingerprint(value) + "）"
+            notice.accept("令牌|桥接令牌已轮换"
                     + (rotatedBy.isBlank() ? "" : "，操作人 " + rotatedBy)
                     + "；已连接的服务端会被断开，需更新 config.yml 后重连。");
             return value;
@@ -177,8 +178,7 @@ public class BridgeHub {
         )));
         syncCommands(session);
         // 服务端接入/重连是不可见的运维事件，写入短期通知，便于其他程序确认桥接已生效。
-        notice.accept("桥接|服务端已接入：" + session.serverName() + "（" + session.serverId() + "），令牌 "
-                + fingerprint(bridgeToken()) + "。");
+        notice.accept("桥接|服务端已接入：" + session.serverName() + "（" + session.serverId() + "）。");
     }
 
     /** 服务端刚接入时补一次指令同步，避免它停在 config.yml 的旧触发词上。 */

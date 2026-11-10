@@ -112,14 +112,20 @@ onMounted(async () => {
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="群组管理" description="按群配置绑定、群名片与退群提示；未配置的群继承全局默认">
-      <template #actions>
-        <YdSelect v-model="connectionId" class="qqrobot-connection"
-          :options="connections.map(item => ({ label: item.name, value: item.id }))"
-          placeholder="选择消息连接" />
-        <YdButton @click="openCreate">新增群组</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
+      <div class="qqrobot-toolbar">
+        <div class="qqrobot-toolbar-info">
+          <strong>群组策略</strong>
+          <span class="qqrobot-muted">共 {{ total }} 个群单独配置，其余群继承全局默认</span>
+        </div>
+        <div class="qqrobot-toolbar-actions">
+          <YdSelect v-model="connectionId" class="qqrobot-connection"
+            :options="connections.map(item => ({ label: item.name, value: item.id }))"
+            placeholder="选择消息连接" />
+          <YdButton @click="openCreate">新增群组</YdButton>
+        </div>
+      </div>
       <div v-if="!groups.length && !loading" class="qqrobot-doc-section qqrobot-groups-blank">
         <YdEmpty description="还没有群组策略。把机器人拉进群后新增群号，就能单独配置绑定、群名片和退群提示。">
           <YdButton @click="openCreate">新增群组</YdButton>
@@ -148,7 +154,7 @@ onMounted(async () => {
           </div>
         </article>
       </div>
-      <div class="qqrobot-pager">
+      <div v-if="total > size" class="qqrobot-pager">
         <YdPagination v-model:page="page" v-model:size="size" :total="total" :sizes="[10, 20, 50]"
           @page-change="load" @size-change="load" />
       </div>

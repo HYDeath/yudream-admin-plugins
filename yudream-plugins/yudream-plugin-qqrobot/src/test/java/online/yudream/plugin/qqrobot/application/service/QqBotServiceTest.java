@@ -83,6 +83,31 @@ class QqBotServiceTest {
         assertTrue(reply.contains("5 分钟"));
     }
 
+    /** 官方回调把事件体包在 d 里；这里必须和真实 payload 一样能命中指令。 */
+    @Test
+    void officialEnvelopeReadsContentFromDataNode() throws Exception {
+        settings.saveBindSettings(new BindSettings("dual", List.of(), 2, 5, 4, false,
+                true, true, "", "numeric", "绑定", "解绑", "", "", "", "", "", List.of()));
+        Map<String, Object> result = bot.handle(mapper.readTree("""
+                {"t":"C2C_MESSAGE_CREATE","id":"event-1","d":{
+                  "id":"msg-1","content":"绑定 Steve","timestamp":"2026-11-10T00:40:10+08:00",
+                  "author":{"user_openid":"OPENID-NESTED"}}}
+                """));
+        assertEquals("OPENID-NESTED", result.get("openid"));
+        assertTrue(String.valueOf(result.get("reply")).contains("验证码"));
+    }
+
+    @Test
+    void officialEnvelopeReadsGroupMemberOpenid() throws Exception {
+        Map<String, Object> result = bot.handle(mapper.readTree("""
+                {"t":"GROUP_AT_MESSAGE_CREATE","d":{
+                  "id":"msg-2","content":" 在线","group_openid":"GROUP-1",
+                  "author":{"member_openid":"MEMBER-1"}}}
+                """));
+        assertEquals("MEMBER-1", result.get("openid"));
+        assertFalse(String.valueOf(result.get("reply")).isBlank());
+    }
+
     @Test
     void chinesePlayerNameIsRejected() throws Exception {
         Map<String, Object> result = bot.handle(mapper.readTree("""

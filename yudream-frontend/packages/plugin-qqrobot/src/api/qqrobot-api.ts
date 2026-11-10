@@ -12,7 +12,10 @@ import type {
   ImageTemplateDetail,
   ImageTemplateSummary,
   CommandSettings,
+  CommandTestResult,
+  BindingRecord,
   PageResult,
+  PendingCode,
   RenderStatus,
   ResourceCard,
 } from '../types'
@@ -26,6 +29,9 @@ export function createQqRobotApi(sdk: YuDreamPluginSdk) {
     commandSettings: () => sdk.http.get<CommandSettings>('/admin/settings/commands'),
     saveCommandSettings: (settings: CommandSettings) =>
       sdk.http.request<CommandSettings>('/admin/settings/commands', { method: 'PUT', data: settings }),
+    testCommand: (text: string, scope: string, commands?: CommandSettings) =>
+      sdk.http.request<CommandTestResult>('/admin/settings/commands/test',
+        { method: 'POST', data: { text, scope, commands } }),
 
     integrationSettings: () => sdk.http.get<QqIntegrationSettings>('/admin/settings/integrations'),
     saveIntegrationSettings: (settings: QqIntegrationSettings) =>
@@ -50,6 +56,17 @@ export function createQqRobotApi(sdk: YuDreamPluginSdk) {
     connections: () => sdk.http.get<ConnectionOption[]>('/admin/connections'),
     availableGroups: (connectionId: string) =>
       sdk.http.get<{ id: string, name: string }[]>(`/admin/options/groups?connectionId=${encodeURIComponent(connectionId)}`),
+
+    bindings: (page: number, size: number, socialId = '') =>
+      sdk.http.get<PageResult<BindingRecord>>(
+        `/admin/bindings?page=${page}&size=${size}&socialId=${encodeURIComponent(socialId)}`),
+    deleteBinding: (socialId: string, player: string) =>
+      sdk.http.request<{ deleted: boolean }>(
+        `/admin/bindings/${encodeURIComponent(socialId)}/${encodeURIComponent(player)}`, { method: 'DELETE' }),
+    issueBindingCode: (player: string, serverId = '') =>
+      sdk.http.request<PendingCode>(
+        `/admin/binding-codes?player=${encodeURIComponent(player)}&serverId=${encodeURIComponent(serverId)}`,
+        { method: 'POST', data: {} }),
 
     cards: (page: number, size: number, keyword = '') =>
       sdk.http.get<PageResult<ResourceCard>>(`/resources?page=${page}&size=${size}&keyword=${encodeURIComponent(keyword)}`),

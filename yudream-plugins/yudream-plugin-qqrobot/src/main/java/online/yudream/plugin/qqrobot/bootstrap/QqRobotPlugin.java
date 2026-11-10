@@ -45,6 +45,9 @@ import java.util.List;
         @PluginRoute(path = "/platform/plugins/qqrobot/bind", name = "platform-plugin-qqrobot-bind",
                 title = "绑定设置", icon = "i-ri:link", component = "qqrobot/BindSettings",
                 permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 10),
+        @PluginRoute(path = "/platform/plugins/qqrobot/bindings", name = "platform-plugin-qqrobot-bindings",
+                title = "绑定管理", icon = "i-ri:links-line", component = "qqrobot/Bindings",
+                permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 11),
         @PluginRoute(path = "/platform/plugins/qqrobot/bot", name = "platform-plugin-qqrobot-bot",
                 title = "机器人设置", icon = "i-ri:robot-2-line", component = "qqrobot/BotSettings",
                 permission = QqRobotPlugin.MANAGE_PERMISSION, sort = 12),
@@ -69,7 +72,7 @@ import java.util.List;
 })
 public class QqRobotPlugin implements YuDreamPlugin {
     public static final String CODE = "qqrobot";
-    public static final String VERSION = "0.6.0";
+    public static final String VERSION = "0.6.2";
     public static final String MANAGE_PERMISSION = "plugin:qqrobot:manage";
 
     private BridgeHub bridge;

@@ -89,12 +89,18 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="服务端桥接" description="Minecraft 服务端通过 WebSocket 连入后台；令牌仅在本页展示">
-      <template #actions>
-        <YdButton variant="outline" @click="load">刷新</YdButton>
-        <YdButton variant="outline" class="qqrobot-danger" @click="rotate">轮换令牌</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
+      <div class="qqrobot-toolbar">
+        <div class="qqrobot-toolbar-info">
+          <strong>桥接连接</strong>
+          <span class="qqrobot-muted">{{ servers.length }} 个服务端在线 · {{ state.pendingBindings }} 个待领取绑定码</span>
+        </div>
+        <div class="qqrobot-toolbar-actions">
+          <YdButton variant="outline" @click="load">刷新</YdButton>
+          <YdButton variant="outline" class="qqrobot-danger" @click="rotate">轮换令牌</YdButton>
+        </div>
+      </div>
       <YdLoadingOverlay :loading="loading">
         <div v-if="dedupedNotices.length" class="qqrobot-notice">
           <button type="button" class="qqrobot-notice-head" @click="noticesOpen = !noticesOpen">

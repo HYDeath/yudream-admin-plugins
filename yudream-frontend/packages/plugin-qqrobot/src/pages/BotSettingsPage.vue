@@ -11,7 +11,7 @@ import {
 import type { YuDreamPluginSdk } from '@yudream/plugin-sdk'
 import { computed, onMounted, ref } from 'vue'
 import { createQqRobotApi } from '../api/qqrobot-api'
-import type { BotConnectionState, QqIntegrationSettings } from '../types'
+import type { BotConnectionState, QqBotSettings, QqIntegrationSettings } from '../types'
 
 const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqRobotApi(props.sdk)
@@ -26,6 +26,7 @@ const integrations = ref<QqIntegrationSettings>({
   providerAvailable: false,
 })
 const activeAnchor = ref('connections')
+const bot = ref<QqBotSettings | null>(null)
 const draft = ref({
   replyEnabled: true,
   replyToFriendAdd: true,
@@ -55,6 +56,7 @@ async function load() {
   try {
     state.value = await api.botConnections()
     integrations.value = await api.integrationSettings()
+    bot.value = await api.botSettings()
     draft.value = {
       replyEnabled: state.value.replyEnabled,
       replyToFriendAdd: state.value.replyToFriendAdd,
@@ -72,21 +74,22 @@ async function load() {
 async function save() {
   saving.value = true
   try {
-    // 凭证不在这里：只把回复策略写回插件设置。
+    // 凭证由平台「QQ 消息平台」管理：这里保留服务端已有值，只合并回复策略，
+    // 避免整对象覆盖把 appId / apiBase / 沙箱开关清空。
     await api.saveBotSettings({
       enabled: draft.value.replyEnabled,
-      appId: '',
-      secretRef: '',
-      webhookPath: '',
-      apiBase: '',
-      sandbox: false,
+      appId: bot.value?.appId ?? '',
+      secretRef: bot.value?.secretRef ?? '',
+      webhookPath: bot.value?.webhookPath ?? '',
+      apiBase: bot.value?.apiBase ?? '',
+      sandbox: bot.value?.sandbox ?? false,
       replyToFriendAdd: draft.value.replyToFriendAdd,
       replyToGroupAdd: draft.value.replyToGroupAdd,
       friendAddMessage: draft.value.friendAddMessage,
       groupAddMessage: draft.value.groupAddMessage,
-      verifySignature: true,
-      secretConfigured: true,
-      publicKeyConfigured: true,
+      verifySignature: bot.value?.verifySignature ?? true,
+      secretConfigured: bot.value?.secretConfigured ?? false,
+      publicKeyConfigured: bot.value?.publicKeyConfigured ?? false,
     })
     integrations.value = await api.saveIntegrationSettings(integrations.value)
     toast.success('回复策略已保存')
@@ -115,10 +118,6 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="机器人设置" description="登录连接由平台「QQ 消息平台」统一管理，这里只配置回复策略">
-      <template #actions>
-        <YdButton variant="outline" :loading="loading" @click="load">刷新状态</YdButton>
-        <YdButton :loading="saving" @click="save">保存</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
       <YdLoadingOverlay :loading="loading">
@@ -262,6 +261,13 @@ onMounted(load)
           </div>
         </div>
       </YdLoadingOverlay>
+      <div class="qqrobot-save-bar">
+        <span class="qqrobot-muted">凭证由「QQ 消息平台」管理，这里保存回复策略</span>
+        <div class="qqrobot-save-actions">
+          <YdButton variant="outline" :disabled="saving || loading" @click="load">刷新状态</YdButton>
+          <YdButton :loading="saving" @click="save">保存设置</YdButton>
+        </div>
+      </div>
     </div>
   </div>
 </template>

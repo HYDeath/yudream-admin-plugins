@@ -12,7 +12,7 @@ import {
 import type { YuDreamPluginSdk } from '@yudream/plugin-sdk'
 import { computed, onMounted, ref } from 'vue'
 import { createQqRobotApi } from '../api/qqrobot-api'
-import { emptyCommandSettings, type CommandBinding, type CommandSettings } from '../types'
+import { emptyCommandSettings, type CommandBinding, type CommandSettings, type CommandTestResult } from '../types'
 
 const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqRobotApi(props.sdk)
@@ -25,6 +25,10 @@ const prefixDraft = ref('')
 const editing = ref<CommandBinding | null>(null)
 const editorOpen = ref(false)
 const filter = ref('')
+const simulateText = ref('背包')
+const simulateScope = ref<'private' | 'group' | 'game'>('group')
+const simulateResult = ref<CommandTestResult | null>(null)
+const simulating = ref(false)
 
 const scopeLabels: Record<string, string> = {
   private: '私聊',
@@ -113,16 +117,28 @@ function removePrefix(prefix: string) {
   draft.value.extraPrefixes = draft.value.extraPrefixes.filter(item => item !== prefix)
 }
 
+async function simulate() {
+  const text = simulateText.value.trim()
+  if (!text)
+    return
+  simulating.value = true
+  try {
+    simulateResult.value = await api.testCommand(text, simulateScope.value, draft.value)
+  }
+  catch (error) {
+    toast.error(String((error as Error)?.message ?? '模拟失败'))
+  }
+  finally {
+    simulating.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="指令设置" description="QQ 群聊、私聊与游戏内共用的触发词；不要求斜杠，也可自定义前缀与别名">
-      <template #actions>
-        <YdButton variant="outline" :disabled="saving" @click="load">重置</YdButton>
-        <YdButton :loading="saving" @click="save">保存</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
       <YdLoadingOverlay :loading="loading">
@@ -162,10 +178,48 @@ onMounted(load)
         <section class="qqrobot-doc-section">
           <header class="qqrobot-cmd-section-head">
             <div>
+              <h3>指令模拟 <span class="qqrobot-count">不执行副作用</span></h3>
+              <p>用当前草稿（含未保存改动）走一遍匹配，确认玩家发这句话时会命中哪条指令、带出什么参数。</p>
+            </div>
+          </header>
+          <div class="qqrobot-simulate">
+            <div class="qqrobot-simulate-input">
+              <YdInput v-model="simulateText" placeholder="输入玩家可能发送的一句话，例如「绑定 Steve」" @keyup.enter="simulate" />
+              <div class="qqrobot-segmented">
+                <button
+                  v-for="scope in (['private', 'group', 'game'] as const)"
+                  :key="scope"
+                  type="button"
+                  :class="{ active: simulateScope === scope }"
+                  @click="simulateScope = scope"
+                >{{ scopeLabels[scope] }}</button>
+              </div>
+              <YdButton :loading="simulating" @click="simulate">模拟</YdButton>
+            </div>
+            <div v-if="simulateResult" class="qqrobot-simulate-result" :class="{ miss: !simulateResult.matched }">
+              <template v-if="simulateResult.matched">
+                <strong class="qqrobot-simulate-title">命中「{{ simulateResult.label }}」</strong>
+                <span class="qqrobot-simulate-pair">动作 <code>{{ simulateResult.action }}</code></span>
+                <span v-if="simulateResult.args" class="qqrobot-simulate-pair">参数 <code>{{ simulateResult.args }}</code></span>
+                <span class="qqrobot-muted">{{ simulateResult.replyHint ? `即时回复：${simulateResult.replyHint}` : '该指令没有即时回复，会走渲染或服务端请求' }}</span>
+              </template>
+              <template v-else>
+                <strong class="qqrobot-simulate-title">没有命中任何指令</strong>
+                <span class="qqrobot-muted">机器人不会回复这句话；检查触发词、生效范围，或「必须带前缀」是否开启。</span>
+              </template>
+            </div>
+          </div>
+        </section>
+
+        <section class="qqrobot-doc-section">
+          <header class="qqrobot-cmd-section-head">
+            <div>
               <h3>指令列表 <span class="qqrobot-count">{{ enabledCount }}/{{ draft.commands.length }} 已启用</span></h3>
               <p>每个指令支持多个别名，触发后按生效范围回复。点击任意一行编辑别名与提示语。</p>
             </div>
-            <YdInput v-model="filter" class="qqrobot-cmd-filter" placeholder="搜索指令或别名" />
+            <div class="qqrobot-cmd-search">
+              <YdInput v-model="filter" class="qqrobot-cmd-filter" placeholder="搜索指令或别名" />
+            </div>
           </header>
 
           <div class="qqrobot-cmd-table">
@@ -187,16 +241,16 @@ onMounted(load)
                 <strong>{{ command.label }}</strong>
                 <code>{{ command.action }}</code>
               </span>
-              <span class="qqrobot-tags qqrobot-cmd-triggers">
+              <span class="qqrobot-tags qqrobot-cmd-triggers" data-label="触发词">
                 <span v-for="trigger in command.triggers.slice(0, 4)" :key="trigger" class="qqrobot-chip">{{ trigger }}</span>
                 <span v-if="command.triggers.length > 4" class="qqrobot-chip ghost">+{{ command.triggers.length - 4 }}</span>
                 <span v-if="!command.triggers.length" class="qqrobot-chip off">未配置</span>
               </span>
-              <span class="qqrobot-tags qqrobot-cmd-scopes">
+              <span class="qqrobot-tags qqrobot-cmd-scopes" data-label="生效范围">
                 <span v-for="scope in command.scopes" :key="scope" class="qqrobot-chip ghost">{{ scopeLabels[scope] ?? scope }}</span>
                 <span v-if="!command.scopes.length" class="qqrobot-chip off">无</span>
               </span>
-              <span class="qqrobot-cmd-state">
+              <span class="qqrobot-cmd-state" data-label="状态">
                 <span :class="['qqrobot-chip', command.enabled ? 'on' : 'off']">{{ command.enabled ? '启用' : '停用' }}</span>
               </span>
             </button>
@@ -204,6 +258,13 @@ onMounted(load)
           </div>
         </section>
       </YdLoadingOverlay>
+      <div class="qqrobot-save-bar">
+        <span class="qqrobot-muted">{{ enabledCount }}/{{ draft.commands.length }} 个指令启用中</span>
+        <div class="qqrobot-save-actions">
+          <YdButton variant="outline" :disabled="saving || loading" @click="load">重置</YdButton>
+          <YdButton :loading="saving" @click="save">保存指令</YdButton>
+        </div>
+      </div>
     </div>
 
     <YdDrawer v-model="editorOpen" :title="editing ? `编辑指令：${editing.label}` : '编辑指令'">

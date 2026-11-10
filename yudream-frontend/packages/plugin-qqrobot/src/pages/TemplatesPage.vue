@@ -303,22 +303,26 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
     <YdPageHeader
       title="图片模板"
       description="服务器在线列表按分组表单配置，出图统一走后台「消息渲染」能力"
-    >
-      <template #actions>
-        <YdButton variant="outline" @click="load">刷新</YdButton>
-        <YdButton @click="createBlank">新建模板</YdButton>
-      </template>
-    </YdPageHeader>
+    />
 
     <div class="qqrobot-body">
       <div class="qqrobot-toolbar">
-        <YdInput v-model="keyword" placeholder="搜索名称、描述或标签" @keyup.enter="load" />
-        <YdSelect v-model="category" :options="categories.map(item => ({ label: item, value: item }))" />
-        <YdButton variant="ghost" @click="load">搜索</YdButton>
+        <div class="qqrobot-toolbar-info">
+          <strong>模板列表</strong>
+          <span class="qqrobot-muted">共 {{ records.length }} 个模板，服务端插件可直接按 ID 调用渲染</span>
+        </div>
+        <div class="qqrobot-toolbar-actions">
+          <YdInput v-model="keyword" class="qqrobot-search" placeholder="搜索名称、描述或标签" @keyup.enter="load" />
+          <YdSelect v-model="category" class="qqrobot-connection"
+            :options="categories.map(item => ({ label: item, value: item }))" />
+          <YdButton variant="outline" @click="load">搜索</YdButton>
+          <YdButton variant="outline" @click="load">刷新</YdButton>
+          <YdButton @click="createBlank">新建模板</YdButton>
+        </div>
       </div>
 
       <div v-if="loading" class="qqrobot-empty">加载中…</div>
-      <div v-else-if="!records.length" class="qqrobot-empty">还没有模板，点右上角「新建模板」开始。</div>
+      <div v-else-if="!records.length" class="qqrobot-empty">还没有模板，点「新建模板」开始。</div>
       <div v-else-if="!detail" class="qqrobot-template-grid">
         <article v-for="item in records" :key="item.id" class="qqrobot-template-card">
           <div class="qqrobot-template-cover" @click="open(item.id)">

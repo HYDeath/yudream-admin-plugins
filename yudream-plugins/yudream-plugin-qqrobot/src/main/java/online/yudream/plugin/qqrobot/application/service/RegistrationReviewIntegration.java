@@ -23,13 +23,22 @@ public final class RegistrationReviewIntegration {
     }
 
     public boolean providerAvailable() {
-        if (context == null || !context.dependencyAvailable(PROVIDER)) {
+        if (context == null) {
+            return false;
+        }
+        if (!context.dependencyAvailable(PROVIDER)) {
             return false;
         }
         try {
-            Class<?> api = Class.forName(API_TYPE, false, context.getClass().getClassLoader());
+            // 用本插件自己的类加载器解析提供方 API：它按 plugin.yml 的 softdepend 接线，
+            // 而 context 的实现类由宿主加载，拿它解析不到插件里的类型。
+            // 依赖方 API 不在宿主 classpath：必须用本插件自己的 PluginClassLoader 解析，
+            // 它会按 plugin.yml 的 softdepend 把提供方加载器接在前面。
+            Class<?> api = apiType();
             return context.service(PROVIDER, api).isPresent();
         } catch (ClassNotFoundException | LinkageError | RuntimeException exception) {
+            System.getLogger("qqrobot").log(System.Logger.Level.WARNING,
+                    "registration-review 联动检测失败: " + exception);
             return false;
         }
     }
@@ -55,7 +64,7 @@ public final class RegistrationReviewIntegration {
             return Status.unbound(config.registrationUrl());
         }
         try {
-            Class<?> apiType = Class.forName(API_TYPE, false, context.getClass().getClassLoader());
+            Class<?> apiType = apiType();
             Object api = context.service(PROVIDER, apiType).orElse(null);
             if (api == null) {
                 return Status.unavailable(config.registrationUrl());
@@ -97,6 +106,10 @@ public final class RegistrationReviewIntegration {
             case "passed" -> "问卷已通过，等待管理员确认。";
             default -> "当前注册审核状态：" + state.state() + "。发送「注册」查看详情。";
         });
+    }
+
+    private static Class<?> apiType() throws ClassNotFoundException {
+        return Class.forName(API_TYPE, false, RegistrationReviewIntegration.class.getClassLoader());
     }
 
     private Optional<PluginUserProfile> findUser(PluginMessagingIdentity identity) {

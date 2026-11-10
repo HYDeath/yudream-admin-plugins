@@ -54,6 +54,12 @@ public class QqRobotController {
         return http.saveCommandSettings(request);
     }
 
+    /** 指令模拟：只做匹配，不触发绑定/出图等副作用，方便在没有真实 QQ 时验证触发词。 */
+    @PluginHttpEndpoint(method = "POST", path = "/admin/settings/commands/test", permission = MANAGE)
+    public PluginHttpResponse testCommand(PluginHttpRequest request) {
+        return http.testCommand(request);
+    }
+
     @PluginHttpEndpoint(method = "GET", path = "/admin/settings/integrations", permission = MANAGE)
     public PluginHttpResponse integrationSettings() {
         return http.integrationSettings();

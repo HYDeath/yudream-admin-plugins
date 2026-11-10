@@ -107,6 +107,18 @@ export interface CommandSettings {
   commands: CommandBinding[]
 }
 
+/** 指令模拟结果：只回匹配信息，不执行副作用。 */
+export interface CommandTestResult {
+  matched: boolean
+  text: string
+  scope: string
+  action?: string
+  label?: string
+  args?: string
+  replyHint?: string
+  willReply?: boolean
+}
+
 export interface ResourceCard {
   id: string
   title: string
@@ -131,6 +143,22 @@ export interface PageResult<T> {
   total: number
   page: number
   size: number
+}
+
+export interface BindingRecord {
+  id: string
+  socialId: string
+  socialName: string
+  playerName: string
+  serverId: string
+  groupId?: string
+  connectionId?: string
+  boundAt: string
+}
+
+export interface PendingCode {
+  code: string
+  expiresAt: string
 }
 
 export interface RenderStatus {

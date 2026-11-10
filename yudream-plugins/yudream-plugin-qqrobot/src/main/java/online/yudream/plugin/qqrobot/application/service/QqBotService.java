@@ -289,6 +289,10 @@ public class QqBotService {
      */
     public Map<String, Object> handle(JsonNode event) {
         String type = event.path("t").asText(event.path("event").asText(""));
+        // 官方回调把事件体放在 d 下（{"t":"C2C_MESSAGE_CREATE","d":{...}}），宿主事件与单测
+        // 则直接把字段摊平在顶层。统一成「字段节点」再取内容，否则真实回调里 content/openid
+        // 全是空串，所有指令都会静默丢弃。
+        JsonNode data = event.path("d").isObject() ? event.path("d") : event;
         String openid = openid(event);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("event", type);
@@ -311,31 +315,31 @@ public class QqBotService {
                             + " 游戏ID」获取验证码，进服后在聊天栏输入即可完成绑定。";
                 }
                 result.put("reply", reply);
-                result.put("scene", event.path("scene").asInt(0));
+                result.put("scene", data.path("scene").asInt(0));
                 if (!reply.isBlank() && !openid.isBlank()) {
-                    result.put("delivered", deliverFriendEvent(bot, openid, reply, event.path("id").asText(""))
+                    result.put("delivered", deliverFriendEvent(bot, openid, reply, data.path("id").asText(""))
                             .toView());
                 }
                 notices.publish("info", "QQ 好友接入", "openid " + mask(openid) + " 添加了机器人。");
             }
             case GROUP_ADD_ROBOT -> {
                 String reply = bot.replyToGroupAdd() ? bot.groupAddMessage() : "";
-                String groupOpenid = event.path("group_openid").asText("");
+                String groupOpenid = data.path("group_openid").asText("");
                 result.put("reply", reply);
                 if (!reply.isBlank() && !groupOpenid.isBlank()) {
-                    result.put("delivered", deliverGroupEvent(bot, groupOpenid, reply, event.path("id").asText(""))
+                    result.put("delivered", deliverGroupEvent(bot, groupOpenid, reply, data.path("id").asText(""))
                             .toView());
                 }
                 notices.publish("info", "QQ 群接入", "群 " + groupOpenid + " 添加了机器人。");
             }
             case C2C_MESSAGE_CREATE -> {
-                Result reply = message(event, bind, openid, "private", "official", "");
-                publish(result, reply, bot, openid, "", event.path("id").asText(""));
+                Result reply = message(data, bind, openid, "private", "official", "");
+                publish(result, reply, bot, openid, "", data.path("id").asText(""));
             }
             case GROUP_AT_MESSAGE_CREATE -> {
-                String groupOpenid = event.path("group_openid").asText("");
-                Result reply = message(event, bind, openid, "group", "official", groupOpenid);
-                publish(result, reply, bot, openid, groupOpenid, event.path("id").asText(""));
+                String groupOpenid = data.path("group_openid").asText("");
+                Result reply = message(data, bind, openid, "group", "official", groupOpenid);
+                publish(result, reply, bot, openid, groupOpenid, data.path("id").asText(""));
             }
             default -> result.put("reply", "");
         }
@@ -672,15 +676,20 @@ public class QqBotService {
         if (!direct.isBlank()) {
             return direct;
         }
-        String author = event.path("author").path("union_openid").asText("");
+        JsonNode data = event.path("d").isObject() ? event.path("d") : event;
+        String nested = data.path("openid").asText("");
+        if (!nested.isBlank()) {
+            return nested;
+        }
+        String author = data.path("author").path("union_openid").asText("");
         if (!author.isBlank()) {
             return author;
         }
-        String member = event.path("author").path("member_openid").asText("");
+        String member = data.path("author").path("member_openid").asText("");
         if (!member.isBlank()) {
             return member;
         }
-        return event.path("author").path("user_openid").asText("");
+        return data.path("author").path("user_openid").asText("");
     }
 
     /** openid 是用户隐私标识，日志/通知里只留前后各 4 位。 */

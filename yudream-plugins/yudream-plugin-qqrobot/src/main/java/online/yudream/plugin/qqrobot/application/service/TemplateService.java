@@ -76,13 +76,14 @@ public class TemplateService {
 
     /** 首次打开时灌入两个可直接使用的模板，避免空列表。 */
     public void seedDefaults() {
-        if (!documents.findAll(COLLECTION, 1, 1).isEmpty()) {
-            upgradeBuiltinServerList();
-            return;
-        }
+        // 按 id 逐个补齐：旧环境可能只留下部分内置模板（例如运营删掉过「玩家信息卡」），
+        // 只要集合非空就整体跳过会让缺失的模板永远回不来。自定义模板仍不受影响。
         for (ImageTemplate template : BuiltinTemplates.all()) {
-            documents.save(COLLECTION, template.id(), template.toDocument());
+            if (find(template.id()).isEmpty()) {
+                documents.save(COLLECTION, template.id(), template.toDocument());
+            }
         }
+        upgradeBuiltinServerList();
     }
 
     /**

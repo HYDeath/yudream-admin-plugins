@@ -149,13 +149,19 @@ onMounted(() => {
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="资源市场" description="资源卡片由服务端渲染为图片，可直接在群聊中发送；支持 CE 资源包图标">
-      <template #actions>
-        <YdInput v-model="keyword" class="qqrobot-search" placeholder="搜索标题、描述或标签" @keyup.enter="page = 1; load()" />
-        <YdButton variant="outline" @click="page = 1; load()">搜索</YdButton>
-        <YdButton @click="openCreate">新增资源</YdButton>
-      </template>
     </YdPageHeader>
     <div class="qqrobot-body">
+      <div class="qqrobot-toolbar">
+        <div class="qqrobot-toolbar-info">
+          <strong>资源卡片</strong>
+          <span class="qqrobot-muted">共 {{ total }} 个资源，卡片由后台模板渲染</span>
+        </div>
+        <div class="qqrobot-toolbar-actions">
+          <YdInput v-model="keyword" class="qqrobot-search" placeholder="搜索标题、描述或标签" @keyup.enter="page = 1; load()" />
+          <YdButton variant="outline" @click="page = 1; load()">搜索</YdButton>
+          <YdButton @click="openCreate">新增资源</YdButton>
+        </div>
+      </div>
       <div v-if="renderStatus && !renderStatus.ready" class="qqrobot-render-bar bad">
         <div class="qqrobot-render-main">
           <span class="qqrobot-render-dot" />
@@ -216,7 +222,7 @@ onMounted(() => {
           </article>
         </div>
       </YdLoadingOverlay>
-      <div class="qqrobot-pager">
+      <div v-if="total > size" class="qqrobot-pager">
         <YdPagination v-model:page="page" v-model:size="size" :total="total" :sizes="[8, 16, 32]"
           @page-change="load" @size-change="load" />
       </div>

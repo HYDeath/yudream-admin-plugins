@@ -3,7 +3,7 @@ displayName: QQ机器人
 description: QQ 机器人接入、绑定与群组管理、图片模板、资源市场、物品渲染，并为 Minecraft 服务端插件提供桥接。
 icon: i-ri:robot-2-line
 main: online.yudream.plugin.qqrobot.bootstrap.QqRobotPlugin
-version: 0.6.0
+version: 0.6.2
 menu:
   category: mc
 softdepend:
