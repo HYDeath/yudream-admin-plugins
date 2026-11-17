@@ -2,15 +2,17 @@ package online.yudream.plugin.schematic.interfaces;
 
 import online.yudream.base.plugin.spi.http.*;
 import online.yudream.plugin.schematic.application.SchematicJobs;
+import online.yudream.plugin.schematic.application.SchematicAdmission;
 import java.util.*;
 import java.util.function.Supplier;
 
 public final class SchematicHttp {
     private final SchematicJobs jobs;
-    public SchematicHttp(SchematicJobs jobs) { this.jobs = jobs; }
+    private final SchematicAdmission admission;
+    public SchematicHttp(SchematicJobs jobs, SchematicAdmission admission) { this.jobs = jobs; this.admission = admission; }
     public PluginHttpResponse upload(PluginHttpRequest request) {
         return call(() -> {
-            String owner = owner(request); var file = request.parts().get("file");
+            String owner = owner(request); admission.require(owner); var file = request.parts().get("file");
             if (file == null || !file.isFile()) throw new IllegalArgumentException("请选择投影文件");
             return PluginHttpResponse.ok(jobs.submit(owner, file.filename(), file.data(), null));
         });
@@ -25,6 +27,7 @@ public final class SchematicHttp {
     private static PluginHttpResponse call(Supplier<PluginHttpResponse> action) {
         try { return action.get(); }
         catch (SecurityException e) { return PluginHttpResponse.rawJson(401, Map.of("message", "请先登录后使用建筑投影")); }
+        catch (SchematicAdmission.Rejected e) { return PluginHttpResponse.rawJson(403, Map.of("message", e.getMessage())); }
         catch (NoSuchElementException e) { return PluginHttpResponse.rawJson(404, Map.of("message", "投影不存在或已删除")); }
         catch (IllegalArgumentException e) { return PluginHttpResponse.rawJson(400, Map.of("message", e.getMessage())); }
     }

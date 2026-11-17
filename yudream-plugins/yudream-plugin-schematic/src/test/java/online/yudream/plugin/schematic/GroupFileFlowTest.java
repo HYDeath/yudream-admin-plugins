@@ -27,12 +27,14 @@ class GroupFileFlowTest {
             calls.incrementAndGet(); assertEquals("get_group_file_download_url", method); assertEquals("123456", payload.get("group_id"));
             assertEquals("file-1", payload.get("file_id")); return CompletableFuture.completedFuture(Map.of("download_url", "https://files.qq.com/fixture"));
         };
-        var users = proxy(PluginUserService.class, (method, args) -> Optional.empty());
+        var users = proxy(PluginUserService.class, (method, args) -> method.equals("findByMessagingIdentity")
+                ? Optional.of(new online.yudream.base.plugin.spi.system.user.PluginUserProfile(1L, "bound", "已绑定", null, null, "777", null, null))
+                : Optional.empty());
         var framework = proxy(FrameworkServices.class, (method, args) -> switch (method) { case "messaging" -> messaging; case "messagingRaw" -> raw; case "users" -> users; default -> throw new UnsupportedOperationException(method); });
         var context = proxy(PluginContext.class, (method, args) -> framework);
         var documents = new JobsTest.Documents();
         try (var jobs = new SchematicJobs(documents, new JobsTest.Files(), model -> new byte[]{1,2,3});
-             var handler = new SchematicMessages(context, jobs, url -> { downloads.incrementAndGet(); assertEquals("https://files.qq.com/fixture",url); return NbtFixtures.structure(); })) {
+             var handler = new SchematicMessages(context, jobs, new online.yudream.plugin.schematic.application.SchematicAdmission(approvedContext()), url -> { downloads.incrementAndGet(); assertEquals("https://files.qq.com/fixture",url); return NbtFixtures.structure(); })) {
             var event = event(Map.of()); handler.onMessage(event); handler.onMessage(event);
             assertTrue(replied.await(5, TimeUnit.SECONDS)); assertEquals(1, calls.get()); assertEquals(1, downloads.get()); assertEquals(2,outgoing.size());
             assertEquals(PluginMessageContent.Type.IMAGE, outgoing.getFirst().content().type());
@@ -45,6 +47,13 @@ class GroupFileFlowTest {
             handler.onMessage(event(Map.of("sandboxSessionId","sandbox-only")));
             assertEquals(1, downloads.get());
         }
+    }
+    private static PluginContext approvedContext() {
+        return proxy(PluginContext.class, (method, args) -> switch (method) {
+            case "service" -> Optional.of((online.yudream.base.plugin.registrationreview.api.RegistrationReviewApi) userId ->
+                    Optional.of(new online.yudream.base.plugin.registrationreview.api.RegistrationReviewApi.Admission(userId, "approved", true, true, "quiz", 1)));
+            default -> null;
+        });
     }
     private static PluginEvent event(Map<String,Object> referrer) {
         return new PluginEvent("seq-1","message_receive","milky","777","123456","",null,null,referrer,"message_receive",Map.of("message_scene","group","msg_id","msg-1","segments",List.of(Map.of("type","file","data",Map.of("file_name","玩家随意命名且没有后缀","file_id","file-1")))),"connection-1","888","msg-1");

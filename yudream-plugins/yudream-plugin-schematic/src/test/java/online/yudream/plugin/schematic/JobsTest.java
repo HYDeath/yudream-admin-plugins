@@ -47,7 +47,7 @@ class JobsTest {
             assertEquals(0L, jobs.page("user:2", false, 1, 12).get("total"));
             assertEquals(1L, jobs.page("user:2", true, 1, 12).get("total"));
             assertFalse(jobs.shared(token).containsKey("owner")); assertArrayEquals(new byte[]{1,2,3}, jobs.preview(token));
-            var http = new SchematicHttp(jobs);
+            var http = new SchematicHttp(jobs, new online.yudream.plugin.schematic.application.SchematicAdmission(SchematicAdmissionTest.context(userId -> Optional.empty())));
             assertEquals(401, http.detail(request(id, null), false).status());
             assertEquals(404, http.detail(request(id, new PluginPrincipal(2L, List.of("*"))), false).status());
             assertEquals(200, http.detail(request(id, new PluginPrincipal(2L, List.of("*"))), true).status());

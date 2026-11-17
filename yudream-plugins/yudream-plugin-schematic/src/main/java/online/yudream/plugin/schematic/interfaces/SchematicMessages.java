@@ -16,12 +16,13 @@ public final class SchematicMessages implements AutoCloseable {
     public record Attachment(String name, String url, String fileId) { }
     private final PluginContext context;
     private final SchematicJobs jobs;
+    private final SchematicAdmission admission;
     private final FileSource downloader;
     private final ExecutorService downloads = new ThreadPoolExecutor(1, 2, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(4), Thread.ofVirtual().name("schematic-file-", 0).factory(), new ThreadPoolExecutor.AbortPolicy());
     private final Map<String, Long> seen = new LinkedHashMap<>();
     private final Set<String> pending = ConcurrentHashMap.newKeySet();
-    public SchematicMessages(PluginContext context, SchematicJobs jobs, QqFileDownload downloader) { this(context, jobs, downloader::download); }
-    public SchematicMessages(PluginContext context, SchematicJobs jobs, FileSource downloader) { this.context = context; this.jobs = jobs; this.downloader = downloader; }
+    public SchematicMessages(PluginContext context, SchematicJobs jobs, SchematicAdmission admission, QqFileDownload downloader) { this(context, jobs, admission, downloader::download); }
+    public SchematicMessages(PluginContext context, SchematicJobs jobs, SchematicAdmission admission, FileSource downloader) { this.context = context; this.jobs = jobs; this.admission = admission; this.downloader = downloader; }
 
     public void onMessage(PluginEvent event) {
         if (event.userId() == null || Objects.equals(event.userId(), event.selfId()) || Boolean.TRUE.equals(event.referrer().get("sandbox")) || event.referrer().containsKey("sandboxSessionId")) return;
@@ -52,6 +53,7 @@ public final class SchematicMessages implements AutoCloseable {
                 url = text(result, "download_url", "url");
             }
             String owner = owner(event);
+            if (!admission.permits(owner)) { pending.remove(pendingKey); send(event, PluginMessageContent.Type.TEXT, SchematicAdmission.REJECTED_MESSAGE); return; }
             byte[] bytes = downloader.download(url);
             if (!NbtReader.hasSupportedHeader(bytes)) {
                 if (SchematicParser.supported(file.name())) send(event, PluginMessageContent.Type.TEXT, "文件实际内容不是 NBT 投影，已拒绝处理；修改后缀不会改变文件格式。");
