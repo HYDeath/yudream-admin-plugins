@@ -47,7 +47,7 @@ class GroupFileFlowTest {
         }
     }
     private static PluginEvent event(Map<String,Object> referrer) {
-        return new PluginEvent("seq-1","message_receive","milky","777","123456","",null,null,referrer,"message_receive",Map.of("message_scene","group","msg_id","msg-1","segments",List.of(Map.of("type","file","data",Map.of("file_name","house.nbt","file_id","file-1")))),"connection-1","888","msg-1");
+        return new PluginEvent("seq-1","message_receive","milky","777","123456","",null,null,referrer,"message_receive",Map.of("message_scene","group","msg_id","msg-1","segments",List.of(Map.of("type","file","data",Map.of("file_name","玩家随意命名且没有后缀","file_id","file-1")))),"connection-1","888","msg-1");
     }
     @SuppressWarnings("unchecked") private static <T> T proxy(Class<T> type, BiFunction<String,Object[],Object> action) { return (T) Proxy.newProxyInstance(type.getClassLoader(),new Class[]{type},(instance,method,args)-> action.apply(method.getName(),args)); }
 }

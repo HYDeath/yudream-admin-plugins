@@ -3,9 +3,9 @@ package online.yudream.plugin.schematic.interfaces;
 import online.yudream.base.plugin.spi.core.PluginContext;
 import online.yudream.base.plugin.spi.system.messaging.*;
 import online.yudream.base.plugin.spi.system.user.PluginMessagingIdentity;
-import online.yudream.base.plugin.spi.system.user.PluginMessagingIdentity;
 import online.yudream.plugin.schematic.application.*;
 import online.yudream.plugin.schematic.infrastructure.QqFileDownload;
+import online.yudream.plugin.schematic.infrastructure.NbtReader;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -52,7 +52,12 @@ public final class SchematicMessages implements AutoCloseable {
                 url = text(result, "download_url", "url");
             }
             String owner = owner(event);
-            jobs.submit(owner, file.name(), downloader.download(url), job -> {
+            byte[] bytes = downloader.download(url);
+            if (!NbtReader.hasSupportedHeader(bytes)) {
+                if (SchematicParser.supported(file.name())) send(event, PluginMessageContent.Type.TEXT, "文件实际内容不是 NBT 投影，已拒绝处理；修改后缀不会改变文件格式。");
+                pending.remove(pendingKey); return;
+            }
+            jobs.submit(owner, file.name(), bytes, job -> {
                 try {
                     if ("READY".equals(job.get("status"))) {
                         send(event, PluginMessageContent.Type.IMAGE, "base64://" + Base64.getEncoder().encodeToString(jobs.preview(String.valueOf(job.get("shareToken")))))
@@ -81,14 +86,15 @@ public final class SchematicMessages implements AutoCloseable {
     }
     public static List<Attachment> attachments(Object data) {
         List<Attachment> found = new ArrayList<>(); collect(data, found, 0);
-        return found.stream().filter(file -> SchematicParser.supported(file.name())).distinct().limit(1).toList();
+        return found.stream().distinct().limit(1).toList();
     }
     private static void collect(Object raw, List<Attachment> found, int depth) {
         if (depth > 7 || found.size() > 8) return;
         if (raw instanceof List<?> list) { list.stream().limit(64).forEach(v -> collect(v, found, depth + 1)); return; }
         if (!(raw instanceof Map<?, ?> value)) return;
+        if (Set.of("image", "video", "record", "audio", "text", "mention", "face").contains(String.valueOf(value.get("type")))) return;
         String name = text(value, "file_name", "filename", "name", "title"), url = text(value, "url", "download_url"), id = text(value, "file_id", "id");
-        if (name != null && SchematicParser.supported(name) && (url != null || id != null)) found.add(new Attachment(name, url, id));
+        if (name != null && (url != null || id != null)) found.add(new Attachment(name, url, id));
         for (String key : List.of("segments", "attachments", "data", "file", "native")) if (value.containsKey(key)) collect(value.get(key), found, depth + 1);
     }
     public static String caption(Map<String, Object> j) {

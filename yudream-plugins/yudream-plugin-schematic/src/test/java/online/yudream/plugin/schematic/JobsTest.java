@@ -11,9 +11,20 @@ import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JobsTest {
+    @Test void disguisedExecutablesNeverReachRendererAndNamesAreNotExecutionPaths() throws Exception {
+        var documents = new Documents(); var files = new Files(); var rendered = new java.util.concurrent.atomic.AtomicInteger(); var done = new CountDownLatch(1);
+        try (var jobs = new SchematicJobs(documents,files,model -> { rendered.incrementAndGet();return new byte[]{1}; })) {
+            assertThrows(IllegalArgumentException.class,()->jobs.submit("user:1","建筑.nbt",new byte[]{77,90,0,0},null));
+            assertEquals(0,documents.count("jobs"));assertEquals(0,rendered.get());
+            var accepted = jobs.submit("user:1","../../任意命名的文件",NbtFixtures.structure(),ignored->done.countDown());
+            assertTrue(done.await(5,TimeUnit.SECONDS)); assertEquals(1,rendered.get());
+            assertEquals("任意命名的文件",accepted.get("filename"));
+            assertTrue(files.data.keySet().stream().allMatch(key->key.matches("previews/[a-f0-9-]{36}\\.png")));
+        }
+    }
     static final class Documents implements PluginDocumentStore {
         final Map<String, Map<String, Map<String, Object>>> data = new ConcurrentHashMap<>();
-        public Map<String, Object> save(String c, String id, Map<String, Object> d) { data.computeIfAbsent(c, ignored -> new ConcurrentHashMap<>()).put(id, new LinkedHashMap<>(d)); return d; }
+        public Map<String, Object> save(String c, String id, Map<String, Object> d) { var stored = new LinkedHashMap<>(d); stored.put("id", id); stored.put("pluginCode", "schematic"); data.computeIfAbsent(c, ignored -> new ConcurrentHashMap<>()).put(id, stored); return stored; }
         public Optional<Map<String, Object>> findById(String c, String id) { return Optional.ofNullable(data.getOrDefault(c, Map.of()).get(id)).map(LinkedHashMap::new); }
         public List<Map<String, Object>> findAll(String c, int page, int size) { return data.getOrDefault(c, Map.of()).values().stream().skip((long)(page-1)*size).limit(size).map(d -> (Map<String,Object>)new LinkedHashMap<>(d)).toList(); }
         public List<Map<String, Object>> findByField(String c, String f, Object v, int page, int size) { return data.getOrDefault(c, Map.of()).values().stream().filter(d -> Objects.equals(d.get(f), v)).skip((long)(page-1)*size).limit(size).toList(); }

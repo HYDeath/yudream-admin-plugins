@@ -31,7 +31,7 @@ async function upload({ file }: { file: File }) {
   try { const job = await api.upload(file); current.value = job; page.value = 1; generation++; void poll(job.id, generation); return { url: api.preview(job) } }
   catch (e) { busy.value = false; error.value = (e as Error).message; throw e }
 }
-function validate(file: File) { const valid = /\.(litematic|nbt)$/i.test(file.name) && file.size > 0 && file.size <= 16 * 1024 * 1024; if (!valid) error.value = '请选择 16 MiB 以内的 .litematic 或 .nbt 文件'; return valid }
+function validate(file: File) { const valid = file.size > 0 && file.size <= 16 * 1024 * 1024; if (!valid) error.value = '请选择 16 MiB 以内的 NBT 投影；后端按实际内容识别格式'; return valid }
 async function shared() { error.value = ''; try { const job = await api.shared(shareCode.value); generation++; clearTimeout(timer); current.value = job } catch (e) { error.value = (e as Error).message } }
 async function select(job: Job) { if (busy.value) return; current.value = job; generation++; clearTimeout(timer); if (job.status === 'QUEUED' || job.status === 'RENDERING') { busy.value = true; void poll(job.id, generation) } }
 async function remove(job: Job) { if (!(await modal.confirm({ title: '删除建筑投影', content: `删除“${job.name || job.filename}”并撤销分享码？` }))) return; try { await api.remove(job.id); if (current.value?.id === job.id) current.value = null; if (jobs.value.length === 1 && page.value > 1) page.value--; toast.success('已删除'); await load() } catch (e) { error.value = (e as Error).message } }
@@ -44,7 +44,7 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
     <YdAlert v-if="error" variant="destructive">{{ error }}</YdAlert>
     <section class="schematic-panel">
       <h2>生成建筑预览</h2>
-      <YdFileUpload v-model="files" :disabled="busy" :before-upload="validate" :http-request="upload" :after-upload="value => value.url" description="拖入 .litematic 或 Java 结构 .nbt，最大 16 MiB" />
+      <YdFileUpload v-model="files" :disabled="busy" :before-upload="validate" :http-request="upload" :after-upload="value => value.url" description="拖入 Litematic 或 Java 结构 NBT，名称与后缀不限，最大 16 MiB" />
       <p class="schematic-muted">默认导出透明双视角 PNG。每次处理一个投影，最多 35 万非空气方块。</p>
       <div class="schematic-toolbar"><YdInput v-model="shareCode" placeholder="粘贴群回复中的工具箱分享码" /><YdButton :disabled="busy || !shareCode.trim()" @click="shared">查看分享</YdButton></div>
     </section>

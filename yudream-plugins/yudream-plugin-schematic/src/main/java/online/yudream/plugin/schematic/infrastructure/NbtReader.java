@@ -30,6 +30,7 @@ public final class NbtReader {
 
     public static Map<String, Object> read(byte[] bytes) {
         if (bytes == null || bytes.length == 0 || bytes.length > MAX_FILE) throw new IllegalArgumentException("文件须为 1 字节至 16 MiB");
+        if (!hasSupportedHeader(bytes)) throw new IllegalArgumentException("文件内容不是 Java NBT 或受支持的压缩 NBT，不能通过改名或改后缀上传程序");
         try {
             InputStream source = new ByteArrayInputStream(bytes);
             if (bytes.length > 1 && (bytes[0] & 255) == 31 && (bytes[1] & 255) == 139) source = new GZIPInputStream(source);
@@ -38,9 +39,19 @@ public final class NbtReader {
                 var nbt = new NbtReader(reader);
                 if (nbt.input.readUnsignedByte() != 10) throw new IOException("根节点必须为 Compound");
                 nbt.input.readUTF();
-                return compound(nbt.tag(10, 0));
+                Map<String, Object> root = compound(nbt.tag(10, 0));
+                if (nbt.input.read() != -1) throw new IOException("NBT 根节点后含有多余内容");
+                return root;
             }
         } catch (IOException | ClassCastException e) { throw new IllegalArgumentException("无法读取 Java NBT：" + e.getMessage(), e); }
+    }
+
+    /** A candidate header is only a prefilter; read() and schema validation are still mandatory. */
+    public static boolean hasSupportedHeader(byte[] bytes) {
+        if (bytes == null || bytes.length < 3 || bytes.length > MAX_FILE) return false;
+        int first = bytes[0] & 255, second = bytes[1] & 255;
+        return first == 10 || first == 31 && second == 139 && (bytes[2] & 255) == 8
+                || first == 120 && ((first << 8) + second) % 31 == 0;
     }
 
     private int length(int bytesPerElement) throws IOException {

@@ -12,7 +12,6 @@ public final class SchematicParser {
     private record Cell(int x, int y, int z) { }
 
     public Schematic parse(String filename, byte[] bytes) {
-        if (!supported(filename)) throw new IllegalArgumentException("仅支持 .litematic 和 Java 结构 .nbt");
         Map<String, Object> root = NbtReader.read(bytes);
         Map<Cell, String> cells = new HashMap<>();
         int[] min = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE};

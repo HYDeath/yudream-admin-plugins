@@ -34,7 +34,8 @@ class PreviewTest {
         assertEquals("qq-file", SchematicMessages.attachments(milky).getFirst().fileId());
         assertEquals("a.nbt", SchematicMessages.attachments(Map.of("attachments", List.of(Map.of("filename", "a.nbt", "url", "https://qq.com/file")))).getFirst().name());
         assertTrue(SchematicMessages.attachments(Map.of("content", "https://example.com/a.nbt")).isEmpty());
-        assertTrue(SchematicMessages.attachments(Map.of("file_name", "a.exe", "url", "https://qq.com/file")).isEmpty());
+        assertEquals("a.exe",SchematicMessages.attachments(Map.of("file_name", "a.exe", "url", "https://qq.com/file")).getFirst().name());
+        assertTrue(SchematicMessages.attachments(Map.of("segments",List.of(Map.of("type","image","data",Map.of("file_name","image.png","url","https://qq.com/file"))))).isEmpty());
     }
     @Test void downloaderRejectsLocalUrlsAndNonQqOriginsBeforeConnecting() {
         try (var downloader = new QqFileDownload()) {

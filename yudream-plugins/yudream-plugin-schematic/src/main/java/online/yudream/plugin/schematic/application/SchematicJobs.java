@@ -24,8 +24,8 @@ public final class SchematicJobs implements AutoCloseable {
 
     public synchronized Map<String, Object> submit(String owner, String filename, byte[] data, Consumer<Map<String, Object>> completed) {
         if (owner == null || owner.isBlank()) throw new IllegalArgumentException("上传者身份缺失");
-        if (!SchematicParser.supported(filename)) throw new IllegalArgumentException("仅支持 .litematic / .nbt 文件");
         if (data == null || data.length == 0 || data.length > NbtReader.MAX_FILE) throw new IllegalArgumentException("文件须为 1 字节至 16 MiB");
+        if (!NbtReader.hasSupportedHeader(data)) throw new IllegalArgumentException("文件内容不是投影 NBT，伪造后缀的程序或脚本会被拒绝");
         if (documents.count(collection(owner)) >= 100) throw new IllegalArgumentException("已保存 100 个投影，请先删除不需要的记录");
         if (!activeOwners.add(owner)) throw new IllegalArgumentException("你已有投影正在处理，请等待完成");
         String id = UUID.randomUUID().toString(), token = UUID.randomUUID().toString();
@@ -93,7 +93,10 @@ public final class SchematicJobs implements AutoCloseable {
     public synchronized Map<String, Object> shared(String token) {
         if (!uuid(token)) throw new NoSuchElementException("投影不存在");
         var index = documents.findById("shares", token).orElseThrow(() -> new NoSuchElementException("投影不存在"));
-        var job = documents.findById("jobs", String.valueOf(index.get("id"))).orElseThrow(() -> new NoSuchElementException("投影不存在"));
+        String jobId = Objects.toString(index.get("jobId"), "");
+        var job = uuid(jobId) ? documents.findById("jobs", jobId).orElseThrow(() -> new NoSuchElementException("投影不存在"))
+                : documents.findByField("jobs", "shareToken", token, 1, 1).stream().findFirst().orElseThrow(() -> new NoSuchElementException("投影不存在"));
+        if (!Objects.equals(token, job.get("shareToken"))) throw new NoSuchElementException("投影不存在");
         var safe = new LinkedHashMap<>(view(job)); safe.remove("submittedAt"); return safe;
     }
     public byte[] preview(String token) {
@@ -111,7 +114,7 @@ public final class SchematicJobs implements AutoCloseable {
     private void save(Map<String, Object> job) {
         String id = (String) job.get("id");
         documents.save("jobs", id, job); documents.save(collection(String.valueOf(job.get("owner"))), id, job);
-        documents.save("shares", String.valueOf(job.get("shareToken")), Map.of("id", id));
+        documents.save("shares", String.valueOf(job.get("shareToken")), Map.of("jobId", id));
     }
     private void deleteRecords(Map<String, Object> job) {
         String id = String.valueOf(job.get("id")); documents.delete("jobs", id); documents.delete(collection(String.valueOf(job.get("owner"))), id); documents.delete("shares", String.valueOf(job.get("shareToken")));
@@ -124,9 +127,10 @@ public final class SchematicJobs implements AutoCloseable {
     private static String collection(String owner) { return "owner-" + UUID.nameUUIDFromBytes(owner.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     private static boolean uuid(String id) { return id != null && id.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"); }
     private static String safeFilename(String name) {
-        String safe = name.replace('\\', '/'); safe = safe.substring(safe.lastIndexOf('/') + 1);
+        String safe = Objects.toString(name, "投影").replace('\\', '/').replaceAll("[\\p{Cntrl}]", ""); safe = safe.substring(safe.lastIndexOf('/') + 1);
+        if (safe.isBlank()) safe = "投影";
         if (safe.length() <= 180) return safe;
-        return safe.substring(0, 160) + safe.substring(safe.lastIndexOf('.'));
+        return safe.substring(0, 180);
     }
     @Override public void close() {
         queue.shutdownNow(); running.values().forEach(task -> task.cancel(true));
