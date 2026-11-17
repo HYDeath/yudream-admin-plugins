@@ -7,5 +7,8 @@ import java.util.Map;
 public record Schematic(String name, String author, long createdAt, int formatVersion, int dataVersion,
                         int width, int height, int length, long volume, List<Block> blocks,
                         Map<String, Long> materials) {
-    public record Block(int x, int y, int z, String state) { }
+    public record Block(int x, int y, int z, String state, Map<String, String> properties) {
+        public Block { properties = Map.copyOf(properties); }
+        public Block(int x, int y, int z, String state) { this(x, y, z, state, Map.of()); }
+    }
 }

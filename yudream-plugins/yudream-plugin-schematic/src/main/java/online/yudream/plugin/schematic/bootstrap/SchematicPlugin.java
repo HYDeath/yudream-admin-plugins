@@ -8,7 +8,7 @@ import online.yudream.plugin.schematic.infrastructure.*;
 import online.yudream.plugin.schematic.interfaces.*;
 import java.util.Set;
 
-@PluginSpec(code="schematic", name="建筑投影", version="0.2.2", description="群文件与工具箱联动的透明建筑预览")
+@PluginSpec(code="schematic", name="建筑投影", version="0.3.0", description="群文件与工具箱联动的原版模型透明建筑预览")
 @PluginPermissions({
     @PluginPermission(code=SchematicPlugin.USE, name="使用建筑投影", module="平台插件", description="上传与查看自己的建筑投影"),
     @PluginPermission(code=SchematicPlugin.MANAGE, name="管理建筑投影", module="平台插件", description="查看和删除建筑投影任务")
@@ -20,10 +20,11 @@ import java.util.Set;
 public final class SchematicPlugin implements YuDreamPlugin {
     public static final String USE = "plugin:schematic:use", MANAGE = "plugin:schematic:manage";
     @Override public void onEnable(PluginContext context) {
-        var jobs = new SchematicJobs(context.documents(), context.files(), new BrowserPreview(context.framework().render())::render);
+        var renderer = new DetailedPreview();
+        var jobs = new SchematicJobs(context.documents(), context.files(), renderer::render);
         var downloader = new QqFileDownload();
         var messages = new SchematicMessages(context, jobs, downloader);
-        context.onDispose(messages); context.onDispose(jobs); context.onDispose(downloader);
+        context.onDispose(messages); context.onDispose(jobs); context.onDispose(downloader); context.onDispose(renderer);
         var http = new SchematicHttp(jobs);
         context.registerHttpController(new SchematicUserController(http));
         context.registerHttpController(new SchematicAdminController(http));

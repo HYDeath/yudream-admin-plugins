@@ -8,6 +8,16 @@ import static online.yudream.plugin.schematic.NbtFixtures.*;
 
 class SchematicParserTest {
     private final SchematicParser parser = new SchematicParser();
+    @Test void retainsDirectionalRailSlopeAndWaterloggedPropertiesInBothFormats() throws Exception {
+        var state=Map.<String,Object>of("Name",mc("powered_rail"),"Properties",Map.of("shape","ascending_north","powered","true","waterlogged","true"));
+        var litematic=Map.<String,Object>of("Regions",Map.of("r",region(new int[]{1,1,1},new int[]{0,0,0},List.of(state("air"),state),new int[]{1})));
+        var vanilla=Map.<String,Object>of("size",List.of(1,1,1),"palette",List.of(state),"blocks",List.of(Map.of("pos",List.of(0,0,0),"state",0)));
+        for(var root:List.of(litematic,vanilla)) {
+            var model=parser.parse("rail",encode(root));
+            assertEquals(Map.of("shape","ascending_north","powered","true","waterlogged","true"),model.blocks().getFirst().properties());
+            assertEquals(1L,model.materials().get(mc("powered_rail")));
+        }
+    }
     @Test void rawGzipAndZlibStructureFilesExcludeAir() throws Exception {
         byte[] nbt = structure();
         for (byte[] value : List.of(nbt, gzip(nbt), zlib(nbt))) {

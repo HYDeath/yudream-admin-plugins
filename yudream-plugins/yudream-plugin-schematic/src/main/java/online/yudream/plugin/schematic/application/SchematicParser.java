@@ -10,10 +10,11 @@ public final class SchematicParser {
     public static final long MAX_VOLUME = 16_000_000;
     public static final int MAX_BLOCKS = 350_000;
     private record Cell(int x, int y, int z) { }
+    private record State(String name, Map<String, String> properties) { }
 
     public Schematic parse(String filename, byte[] bytes) {
         Map<String, Object> root = NbtReader.read(bytes);
-        Map<Cell, String> cells = new HashMap<>();
+        Map<Cell, State> cells = new HashMap<>();
         int[] min = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE};
         int[] max = {Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
         long volume = 0;
@@ -62,18 +63,31 @@ public final class SchematicParser {
         } else throw new IllegalArgumentException("无法识别结构：需要 Litematica Regions 或 Java 结构 size/palette/blocks；不支持基岩版小端 NBT");
         if (cells.isEmpty()) throw new IllegalArgumentException("投影中没有可渲染方块");
         List<Block> blocks = new ArrayList<>(cells.size()); Map<String, Long> materials = new TreeMap<>();
-        cells.forEach((p, state) -> { blocks.add(new Block(p.x - min[0], p.y - min[1], p.z - min[2], state)); materials.merge(state, 1L, Long::sum); });
+        cells.forEach((p, state) -> { blocks.add(new Block(p.x - min[0], p.y - min[1], p.z - min[2], state.name(), state.properties())); materials.merge(state.name(), 1L, Long::sum); });
         return new Schematic(text(meta, "Name", filename), text(meta, "Author", "未知"), number(meta, "TimeCreated").longValue(),
                 number(root, "Version").intValue(), number(root, "MinecraftDataVersion").intValue() != 0 ? number(root, "MinecraftDataVersion").intValue() : number(root, "DataVersion").intValue(),
                 max[0] - min[0], max[1] - min[1], max[2] - min[2], volume, List.copyOf(blocks), materials);
     }
     public static boolean supported(String name) { return name != null && name.toLowerCase(Locale.ROOT).matches(".*\\.(litematic|nbt)$"); }
-    private static List<String> palette(Object value) {
+    private static List<State> palette(Object value) {
         if (!(value instanceof List<?> list) || list.isEmpty() || list.size() > 65536) throw new IllegalArgumentException("无效的方块调色板");
-        return list.stream().map(v -> { var state = compound(v); String name = text(state, "Name", ""); if (!name.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) throw new IllegalArgumentException("无效的方块名称"); return name; }).toList();
+        return list.stream().map(v -> {
+            var state = compound(v); String name = text(state, "Name", "");
+            if (!name.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) throw new IllegalArgumentException("无效的方块名称");
+            Map<String, String> properties = new TreeMap<>();
+            if (state.containsKey("Properties")) {
+                var raw = compound(state.get("Properties"));
+                if (raw.size() > 64) throw new IllegalArgumentException("方块属性过多");
+                raw.forEach((key, val) -> {
+                    if (!key.matches("[a-z0-9_]{1,64}") || !(val instanceof String str) || !str.matches("[a-z0-9_.-]{1,128}")) throw new IllegalArgumentException("无效的方块属性");
+                    properties.put(key, (String) val);
+                });
+            }
+            return new State(name, Map.copyOf(properties));
+        }).toList();
     }
-    private static void put(Map<Cell, String> cells, Cell p, String state) {
-        if (Set.of("minecraft:air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void").contains(state)) cells.remove(p);
+    private static void put(Map<Cell, State> cells, Cell p, State state) {
+        if (Set.of("minecraft:air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void").contains(state.name())) cells.remove(p);
         else cells.put(p, state);
         if (cells.size() > MAX_BLOCKS) throw new IllegalArgumentException("非空气方块超过 35 万，建议按区域拆分文件");
     }

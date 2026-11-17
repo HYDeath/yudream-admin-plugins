@@ -55,13 +55,14 @@ public final class SchematicJobs implements AutoCloseable {
                 job.put("formatVersion", model.formatVersion()); job.put("dataVersion", model.dataVersion());
                 job.put("width", model.width()); job.put("height", model.height()); job.put("length", model.length());
                 job.put("blocks", model.blocks().size()); job.put("volume", model.volume());
-                job.put("materials", model.materials()); job.put("status", "READY"); job.put("completedAt", Instant.now().toString()); save(job);
+                job.put("materials", model.materials()); job.put("renderer", "原版模型与纹理（26.3 资源）· 透明双视角 · 保留方块状态");
+                job.put("status", "READY"); job.put("completedAt", Instant.now().toString()); save(job);
             }
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             synchronized (this) {
                 job.put("status", "FAILED");
-                job.put("error", e instanceof IllegalArgumentException ? e.getMessage() : "浏览器渲染失败，请确认平台的消息渲染能力已启用后重新上传");
+                job.put("error", e instanceof IllegalArgumentException ? e.getMessage() : "详细渲染暂不可用，请稍后重新上传");
                 save(job);
             }
         } finally { activeOwners.remove(String.valueOf(job.get("owner"))); running.remove(id); }
@@ -122,7 +123,7 @@ public final class SchematicJobs implements AutoCloseable {
     private Map<String, Object> view(Map<String, Object> job) {
         var result = new LinkedHashMap<>(job); result.remove("owner");
         result.put("previewPath", "/public/previews/" + result.get("shareToken") + ".png");
-        result.put("renderer", "体素概览（近似方块色，大型建筑自动简化；不含原版材质及特殊模型）"); return result;
+        result.putIfAbsent("renderer", "体素概览（历史预览，重新上传可生成详细模型）"); return result;
     }
     private static String collection(String owner) { return "owner-" + UUID.nameUUIDFromBytes(owner.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     private static boolean uuid(String id) { return id != null && id.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"); }
