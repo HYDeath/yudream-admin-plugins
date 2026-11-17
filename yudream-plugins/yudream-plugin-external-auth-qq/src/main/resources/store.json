@@ -1,0 +1,11 @@
+{
+  "license": "MIT",
+  "category": "消息与社区",
+  "tags": [
+    "qq",
+    "oauth",
+    "login",
+    "identity"
+  ],
+  "releaseNotes": "0.2.0：新增同一 QQ 应用作用域的 OpenID 只读账号查询服务，供官网审核与官方机器人联动，禁止跨应用猜测身份。\n\n0.1.1：修正浏览器回调地址为前端回调页，缓存 provider 配置，停用释放 HTTP 资源，QQ 服务错误不透出敏感原文。\n\n0.1.0：首个版本。接入 QQ Graph OAuth2，使用宿主外部登录 SPI，由宿主统一签发登录会话和处理第三方账号绑定；QQ AppKey 只保存到插件 SecretStore。"
+}

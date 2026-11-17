@@ -1,0 +1,8 @@
+name: external-auth-qq
+displayName: QQ 登录
+description: QQ Graph OAuth2 外部登录提供方，宿主统一处理登录态、外部账号绑定和账号认领。
+icon: i-ri:qq-line
+main: online.yudream.base.plugin.externalauthqq.bootstrap.ExternalAuthQqPlugin
+version: 0.2.0
+menu:
+  category: social

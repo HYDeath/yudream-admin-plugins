@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "sections": [
+    {
+      "code": "qq",
+      "title": "QQ OAuth 配置",
+      "description": "旧官网使用 QQ Graph OAuth2。AppKey 只写入插件 SecretStore，不会在设置查询中返回。",
+      "fields": [
+        { "key": "enabled", "label": "启用 QQ 登录", "type": "switch", "default": false },
+        { "key": "appId", "label": "QQ AppID", "type": "text", "default": "", "maxLength": 128 },
+        { "key": "appKey", "label": "QQ AppKey", "type": "secret", "help": "保存后只显示已配置状态；不会回显密钥。" },
+        { "key": "redirectUri", "label": "回调地址", "type": "text", "default": "", "maxLength": 1000, "help": "必须使用站点的 /external-login/callback 页面地址，例如 https://example.com/external-login/callback。" },
+        { "key": "displayName", "label": "登录入口名称", "type": "text", "default": "QQ 登录", "maxLength": 40 },
+        { "key": "sort", "label": "登录入口排序", "type": "number", "default": 80, "min": 1, "max": 999 }
+      ]
+    }
+  ]
+}
