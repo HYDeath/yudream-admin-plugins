@@ -40,6 +40,7 @@
     </properties>
 
     <modules>
+        <module>yudream-plugins/yudream-plugin-schematic</module>
         <module>ysm-runtime/core</module>
         <module>yudream-plugins/yudream-plugin-ysm-models</module>
         <module>yudream-plugins/yudream-plugin-alipay</module>
