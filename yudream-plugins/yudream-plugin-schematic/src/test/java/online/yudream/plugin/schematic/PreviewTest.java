@@ -8,6 +8,16 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PreviewTest {
+    @Test void officialNormalizedFileWithoutFilenameStillConverts() {
+        var event = Map.of("segments",List.of(Map.of("type","file","data",Map.of("url","https://files.qq.com/anonymous"))));
+        var files=SchematicMessages.attachments(event);
+        assertEquals(1,files.size()); assertEquals("投影",files.getFirst().name());
+    }
+    @Test void acceptsOfficialNormalizedFileWithoutFilename() {
+        var file = SchematicMessages.attachments(Map.of("segments",List.of(Map.of("type","file","data",Map.of("url","https://files.qq.com/file"))))).getFirst();
+        assertEquals("投影",file.name()); assertEquals("https://files.qq.com/file",file.url());
+    }
+
     @Test void complexSurfaceCoarsensOnlyThePreview() {
         var blocks = new java.util.ArrayList<online.yudream.plugin.schematic.domain.Schematic.Block>();
         for(int x=0;x<32;x++)for(int y=0;y<32;y++)for(int z=0;z<32;z++)if((x+y+z)%2==0)blocks.add(new online.yudream.plugin.schematic.domain.Schematic.Block(x,y,z,NbtFixtures.mc("stone")));

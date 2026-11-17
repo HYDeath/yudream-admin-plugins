@@ -8,7 +8,7 @@ import online.yudream.plugin.schematic.infrastructure.*;
 import online.yudream.plugin.schematic.interfaces.*;
 import java.util.Set;
 
-@PluginSpec(code="schematic", name="建筑投影", version="0.2.1", description="群文件与工具箱联动的透明建筑预览")
+@PluginSpec(code="schematic", name="建筑投影", version="0.2.2", description="群文件与工具箱联动的透明建筑预览")
 @PluginPermissions({
     @PluginPermission(code=SchematicPlugin.USE, name="使用建筑投影", module="平台插件", description="上传与查看自己的建筑投影"),
     @PluginPermission(code=SchematicPlugin.MANAGE, name="管理建筑投影", module="平台插件", description="查看和删除建筑投影任务")

@@ -2,7 +2,7 @@ name: schematic
 displayName: 建筑投影
 description: 群文件与工具箱联动的建筑投影解析、透明双视角预览。
 main: online.yudream.plugin.schematic.bootstrap.SchematicPlugin
-version: 0.2.1
+version: 0.2.2
 icon: i-ri:building-4-line
 menu:
   category: tools

@@ -93,9 +93,13 @@ public final class SchematicMessages implements AutoCloseable {
         if (raw instanceof List<?> list) { list.stream().limit(64).forEach(v -> collect(v, found, depth + 1)); return; }
         if (!(raw instanceof Map<?, ?> value)) return;
         if (Set.of("image", "video", "record", "audio", "text", "mention", "face").contains(String.valueOf(value.get("type")))) return;
+        if ("file".equals(value.get("type")) && value.get("data") instanceof Map<?, ?> file) {
+            String fileUrl = text(file, "url", "download_url", "uri", "resource_url", "file_url");
+            if (fileUrl != null) found.add(new Attachment(Objects.requireNonNullElse(text(file, "file_name", "filename", "name"), "投影"), fileUrl, text(file, "file_id")));
+        }
         String name = text(value, "file_name", "filename", "name", "title"), url = text(value, "url", "download_url"), id = text(value, "file_id", "id");
         if (name != null && (url != null || id != null)) found.add(new Attachment(name, url, id));
-        for (String key : List.of("segments", "attachments", "data", "file", "native")) if (value.containsKey(key)) collect(value.get(key), found, depth + 1);
+        for (String key : List.of("segments", "attachments", "data", "file", "native", "msg_elements")) if (value.containsKey(key)) collect(value.get(key), found, depth + 1);
     }
     public static String caption(Map<String, Object> j) {
         long created = j.get("createdAt") instanceof Number n ? n.longValue() : 0;

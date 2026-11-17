@@ -1,7 +1,7 @@
 {
   "name": "@yudream/plugin-schematic",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "scripts": { "typecheck": "vue-tsc --noEmit --pretty false --skipLibCheck --ignoreDeprecations 6.0", "build": "vite build" },
   "dependencies": { "@yudream/components": "catalog:", "@yudream/plugin-sdk": "catalog:", "vue": "catalog:" },

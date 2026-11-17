@@ -12,7 +12,7 @@
 
 ## 平台与渲染边界
 
-- 腾讯当前公开的[文件接收文档](https://github.com/tencent-connect/bot-docs/blob/master/docs/develop/api-v2/server-inter/message/type/file.md)仅列出单聊 pdf/doc/txt，未开放群聊任意文件接收。**官方 QQ OpenAPI 无法保证直接收取 litematic/nbt 群文件**；此情况下使用网站上传。插件不伪造官方文件事件，也不抓取聊天正文中的任意 URL。
+- 当前[官方消息类型文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/overview.html)列出群聊文件收发支持，附件由 attachments 提供，引用内容位于 msg_elements。宿主需保留文件元数据并展开引用附件；插件兼容无文件名的标准文件消息段。群直传是否推送仍取决于开放平台配置，必要时引用文件并 @机器人触发。插件不抓取聊天正文中的任意 URL。
 - [Milky 协议](https://milky.ntqqrev.org/struct/Event.html)要求文件上传同时上报带 `file` 段的消息；本插件消费宿主已有的 `message_receive` 事件，无需修改宿主或发布新 SPI。文件链接 API 见[官方协议](https://milky.ntqqrev.org/api/file)。群自动出图的部署前提是已连接支持该事件与 API 的协议端。
 - 参考 [Litematica-Nova](https://github.com/LitematicaViewer/Litematica-Nova) 的元数据及双视角交互。其公开 Community 版本[不包含 Standard / Full 渲染核心](https://github.com/LitematicaViewer/Litematica-Nova/blob/main/CONTRIBUTING.md)。本插件没有复制 Nova 源码或私有运行组件。
 - 当前为**体素概览**：根据真实方块位置构建可见面，使用近似方块色、定向明暗与两个相反视角，不包含原版纹理、流体透明度、半砖/楼梯/红石等特殊模型。不是 Nova 全材质渲染器；不会自动识别建筑用途或编造 Minecraft 版本名。文件中提供的数据版本号原样显示。
