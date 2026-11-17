@@ -44,6 +44,10 @@ public class AvatarService {
         return fetch("body:" + player, "https://minotar.net/armor/body/" + encode(player) + "/180.png");
     }
 
+    public String views(String player) {
+        return SkinViews.render(fetch("skin:" + player, "https://minotar.net/skin/" + encode(player)));
+    }
+
     private String fetch(String cacheKey, String url) {
         if (!enabled) {
             return "";

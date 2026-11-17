@@ -24,7 +24,10 @@ class InventoryPreviewTest {
 
         assertEquals(41, items.size());
         assertEquals("minecraft:diamond_sword", items.get(0).itemId());
-        assertEquals("minecraft:netherite_helmet", items.get(36).itemId());
+        assertEquals("minecraft:netherite_boots", items.get(36).itemId());
+        assertEquals("minecraft:netherite_leggings", items.get(37).itemId());
+        assertEquals("minecraft:netherite_chestplate", items.get(38).itemId());
+        assertEquals("minecraft:netherite_helmet", items.get(39).itemId());
         assertEquals("minecraft:shield", items.get(40).itemId());
         assertTrue(items.get(9).openedContainer());
         assertEquals(27, items.get(9).container().size());
@@ -44,6 +47,26 @@ class InventoryPreviewTest {
         assertTrue(html.contains("durability"));
         assertTrue(html.contains("class=\"glint\""));
         assertTrue(html.contains("战利品箱"));
+    }
+
+    @Test
+    void realPlayerInventoryArmorSlotsRenderFromHelmetToBoots() {
+        Capture capture = new Capture();
+        // 服务端序列化 PlayerInventory.getContents()：36 靴子、37 护腿、38 胸甲、39 头盔。
+        var items = new java.util.ArrayList<ItemView>(java.util.Collections.nCopies(41,
+                new ItemView("minecraft:air", 0, 0, 0, "", List.of(), List.of(), "", "common", 0, List.of())));
+        String[] armor = {"boots", "leggings", "chestplate", "helmet"};
+        for (int index = 0; index < armor.length; index++) {
+            items.set(36 + index, new ItemView("test:" + armor[index], 1, 0, 0,
+                    "", List.of(), List.of(), "data:image/png;base64," + armor[index],
+                    "common", 0, List.of()));
+        }
+        new ItemCardRenderer(capture).inventory("真实槽位", items).join();
+        String html = capture.html.get();
+        for (String piece : armor) assertTrue(html.contains("base64," + piece));
+        assertTrue(html.indexOf("base64,helmet") < html.indexOf("base64,chestplate"));
+        assertTrue(html.indexOf("base64,chestplate") < html.indexOf("base64,leggings"));
+        assertTrue(html.indexOf("base64,leggings") < html.indexOf("base64,boots"));
     }
 
     @Test

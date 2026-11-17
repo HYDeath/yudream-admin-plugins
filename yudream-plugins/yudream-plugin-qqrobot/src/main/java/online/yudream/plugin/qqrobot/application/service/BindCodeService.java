@@ -65,6 +65,13 @@ public class BindCodeService {
         return Optional.ofNullable(value);
     }
 
+    public synchronized Optional<PendingCode> takeForPlayer(String code, String player, String serverId) {
+        Optional<PendingCode> found = peek(code);
+        if (found.isEmpty() || !found.get().playerName().equalsIgnoreCase(player)
+                || (!found.get().serverId().isBlank() && !found.get().serverId().equals(serverId))) return Optional.empty();
+        return take(code);
+    }
+
     public int pendingCount() {
         purgeExpired();
         return pending.size();

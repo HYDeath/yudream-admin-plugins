@@ -59,6 +59,51 @@ class BindingServiceTest {
         assertTrue(service.bySocial("10001", 1, 20).isEmpty());
     }
 
+    @Test
+    void unbindAllCollectsEveryHistoricalPageBeforeDeleting() {
+        InMemoryDocuments documents = new InMemoryDocuments();
+        BindingService service = new BindingService(documents, new SettingsService(documents));
+        for (int index = 0; index < 205; index++) {
+            seed(documents, "member", "Player" + index, "group", "connection");
+        }
+        seed(documents, "other", "Keep", "group", "connection");
+
+        assertEquals(205, service.unbindAll("member").size());
+        assertTrue(service.bySocial("member", 1, 100).isEmpty());
+        assertTrue(service.find("other", "Keep").isPresent());
+        assertTrue(service.unbindAll("member").isEmpty());
+    }
+
+    @Test
+    void officialCleanupScansPastOtherScopesAndPreservesThem() {
+        InMemoryDocuments documents = new InMemoryDocuments();
+        BindingService service = new BindingService(documents, new SettingsService(documents));
+        for (int index = 0; index < 105; index++) {
+            seed(documents, "member", "Other" + index, "group", "other-connection");
+        }
+        for (int index = 0; index < 205; index++) {
+            seed(documents, "member", "Target" + index, "group", "connection");
+        }
+        seed(documents, "member", "OtherGroup", "other-group", "connection");
+        seed(documents, "member", "Legacy", "", "");
+
+        assertEquals(205, service.unbindInGroup("member", "connection", "group").size());
+        assertEquals(107, documents.count("qqrobot-binding"));
+        assertTrue(service.find("member", "Other104").isPresent());
+        assertTrue(service.find("member", "OtherGroup").isPresent());
+        assertTrue(service.find("member", "Legacy").isPresent());
+        assertFalse(service.find("member", "Target204").isPresent());
+        assertTrue(service.unbindInGroup("member", "connection", "group").isEmpty());
+    }
+
+    private static void seed(InMemoryDocuments documents, String socialId, String player,
+                             String group, String connection) {
+        var record = new online.yudream.plugin.qqrobot.domain.BindingRecord(
+                online.yudream.plugin.qqrobot.domain.BindingRecord.key(socialId, player),
+                socialId, "User", player, "server", group, connection, java.time.Instant.now());
+        documents.save("qqrobot-binding", record.id(), record.toDocument());
+    }
+
     private static final class InMemoryDocuments implements PluginDocumentStore {
         private final Map<String, Map<String, Object>> values = new LinkedHashMap<>();
 
@@ -79,14 +124,17 @@ class BindingServiceTest {
         public List<Map<String, Object>> findAll(String collection, int page, int size) {
             return values.entrySet().stream()
                     .filter(entry -> entry.getKey().startsWith(collection + "/"))
-                    .map(Map.Entry::getValue).toList();
+                    .map(Map.Entry::getValue)
+                    .skip((long) (page - 1) * size).limit(size).toList();
         }
 
         @Override
         public List<Map<String, Object>> findByField(String collection, String field, Object value, int page, int size) {
-            return findAll(collection, page, size).stream()
-                    .filter(document -> String.valueOf(document.get(field)).equals(String.valueOf(value)))
-                    .toList();
+            return values.entrySet().stream()
+                    .filter(entry -> entry.getKey().startsWith(collection + "/"))
+                    .map(Map.Entry::getValue)
+                    .filter(document -> java.util.Objects.equals(document.get(field), value))
+                    .skip((long) (page - 1) * size).limit(size).toList();
         }
 
         @Override

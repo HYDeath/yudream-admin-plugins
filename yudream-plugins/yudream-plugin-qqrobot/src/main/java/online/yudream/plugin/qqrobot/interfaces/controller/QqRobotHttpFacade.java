@@ -215,8 +215,11 @@ public class QqRobotHttpFacade {
     }
 
     public PluginHttpResponse saveBindSettings(PluginHttpRequest request) {
-        return handle(() -> PluginHttpResponse.ok(settings.saveBindSettings(
-                mapper.convertValue(read(request), BindSettings.class))));
+        return handle(() -> {
+            BindSettings saved = settings.saveBindSettings(mapper.convertValue(read(request), BindSettings.class));
+            bridge.syncSettings();
+            return PluginHttpResponse.ok(saved);
+        });
     }
 
     /**
@@ -230,7 +233,7 @@ public class QqRobotHttpFacade {
         return handle(() -> {
             CommandSettings saved = settings.saveCommandSettings(
                     mapper.convertValue(read(request), CommandSettings.class));
-            broadcastCommands(saved);
+            bridge.syncSettings();
             return PluginHttpResponse.ok(saved);
         });
     }

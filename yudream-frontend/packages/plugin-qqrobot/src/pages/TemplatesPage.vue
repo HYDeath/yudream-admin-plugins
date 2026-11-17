@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import {
+  YdAction,
+  YdAlert,
+  YdFilePicker,
+  YdTextarea,
+  YdSettingsLayout,
+  YdSettingsSection,
+  useYdModal,
   YdButton,
   YdCheckbox,
   YdInput,
@@ -17,6 +24,11 @@ import type { ImageTemplateDetail, ImageTemplateSummary, TemplateSchema } from '
 const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
+const modal = useYdModal()
+const loadError = ref('')
+const previewLoading = ref(false)
+let previewSequence = 0
+let openSequence = 0
 
 const records = ref<ImageTemplateSummary[]>([])
 const keyword = ref('')
@@ -32,13 +44,13 @@ const serverAvailable = ref(true)
 const isServerList = computed(() => detail.value?.id === 'builtin-server-list')
 
 const groups = computed(() => [
-  { id: 'display', label: '基础显示设置' },
-  ...(isServerList.value ? [{ id: 'servers', label: '服务器筛选' }] : []),
-  { id: 'avatar', label: '玩家头像设置' },
-  { id: 'background', label: '背景设置' },
-  { id: 'css', label: '自定义 CSS' },
-  { id: 'cache', label: '缓存与性能' },
-  { id: 'meta', label: '模板信息' },
+  { value: 'display', label: '基础显示设置' },
+  ...(isServerList.value ? [{ value: 'servers', label: '服务器筛选' }] : []),
+  { value: 'avatar', label: '玩家头像设置' },
+  { value: 'background', label: '背景设置' },
+  { value: 'css', label: '自定义 CSS' },
+  { value: 'cache', label: '缓存与性能' },
+  { value: 'meta', label: '模板信息' },
 ])
 
 const themeOptions = computed(() => optionsFrom(detail.value?.schema?.themes, [
@@ -117,22 +129,28 @@ function apiEnabled(key: string) {
 }
 
 function toggleApi(key: string, enabled: boolean) {
-  const selected = Array.isArray(settings.value.apiSources)
-    ? settings.value.apiSources.map(String)
+  const configured = settings.value.apiSources
+  const selected = Array.isArray(configured) && configured.length
+    ? configured.map(String)
     : apiSources.value.map(source => source.key)
   const next = enabled
     ? Array.from(new Set([...selected, key]))
     : selected.filter(item => item !== key)
+  if (!next.length) {
+    toast.info('至少保留一个数据源；旧模板的空列表表示启用全部数据源')
+    return
+  }
   patch({ apiSources: next })
 }
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const data = await api.templates(keyword.value, category.value === '全部' ? '' : category.value)
     records.value = data.records ?? []
   } catch (error) {
-    toast.error(String((error as Error)?.message ?? '模板列表加载失败'))
+    loadError.value = String((error as Error)?.message ?? '模板列表加载失败')
   } finally {
     loading.value = false
   }
@@ -149,24 +167,42 @@ async function loadServers() {
 }
 
 async function open(id: string) {
+  const request = ++openSequence
+  closePreview()
+  detail.value = null
   try {
-    detail.value = await api.template(id)
+    const loaded = await api.template(id)
+    if (request !== openSequence) return
+    detail.value = loaded
     detail.value.settings = { ...(detail.value.settings ?? {}) }
     activeGroup.value = 'display'
     if (id === 'builtin-server-list') await loadServers()
-    await loadPreview()
+    if (request === openSequence) await loadPreview()
   } catch (error) {
-    toast.error(String((error as Error)?.message ?? '模板详情加载失败'))
+    if (request === openSequence) toast.error(String((error as Error)?.message ?? '模板详情加载失败'))
   }
 }
 
+function closePreview() {
+  previewSequence++
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = null
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = ''
+  previewError.value = ''
+  previewLoading.value = false
+}
 function close() {
+  openSequence++
+  closePreview()
   detail.value = null
 }
 
 async function save() {
-  if (!detail.value) return
+  if (!detail.value || saving.value) return
   saving.value = true
+  const request = openSequence
+  const id = detail.value.id
   try {
     const saved = await api.saveTemplate({
       id: detail.value.id,
@@ -181,8 +217,10 @@ async function save() {
       width: detail.value.width,
       settings: detail.value.settings,
     })
-    detail.value = { ...detail.value, ...saved, settings: { ...(saved.settings ?? {}) } }
-    await loadPreview()
+    if (request === openSequence && detail.value?.id === id) {
+      detail.value = { ...detail.value, ...saved, settings: { ...(saved.settings ?? {}) } }
+      await loadPreview()
+    }
     toast.success('模板配置已保存')
     await load()
   } catch (error) {
@@ -208,27 +246,27 @@ function refreshPreview() {
  */
 async function loadPreview() {
   if (!detail.value) return
+  const request = ++previewSequence
+  const id = detail.value.id
   const stamp = Date.now()
-  previewStamp.value = stamp
+  previewLoading.value = true
   previewError.value = ''
   try {
     const response = await props.sdk.http.blob(
-      `/templates/${encodeURIComponent(detail.value.id)}/render?t=${stamp}`,
-      { method: 'POST', data: { variables: {}, settings: detail.value.settings } },
+      `/templates/${encodeURIComponent(id)}/render?t=${stamp}`,
+      { method: 'POST', data: { variables: {}, settings: { ...detail.value.settings } } },
     )
+    if (request !== previewSequence || detail.value?.id !== id) return
     const next = URL.createObjectURL(response.data)
     if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = next
+    previewStamp.value = stamp
   } catch (error) {
-    const message = String((error as Error)?.message ?? '预览出图失败')
-    previewError.value = message
-    toast.error(message)
+    if (request !== previewSequence) return
+    previewError.value = String((error as Error)?.message ?? '预览出图失败')
+  } finally {
+    if (request === previewSequence) previewLoading.value = false
   }
-}
-
-function jump(id: string) {
-  activeGroup.value = id
-  document.getElementById(`qqrobot-tpl-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 async function createBlank() {
@@ -253,27 +291,26 @@ async function createBlank() {
   }
 }
 
-async function uploadCover(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
+async function uploadCover(files: File[]) {
+  const file = files[0]
   if (!file || !detail.value) return
+  const request = openSequence
+  const id = detail.value.id
   try {
-    const cover = await api.uploadTemplateCover(detail.value.id, file)
-    detail.value.cover = cover
+    const cover = await api.uploadTemplateCover(id, file)
+    if (request === openSequence && detail.value?.id === id) detail.value.cover = cover
     await load()
     toast.success('封面已更新')
   } catch (error) {
     toast.error(String((error as Error)?.message ?? '封面上传失败'))
-  } finally {
-    input.value = ''
   }
 }
 
 async function remove(item: ImageTemplateSummary) {
-  if (!window.confirm(`确定删除模板「${item.name}」？`)) return
+  if (!await modal.confirm({ title: '删除模板', content: `确定删除模板「${item.name}」？`, confirmButtonText: '删除' })) return
   try {
     await api.deleteTemplate(item.id)
-    if (detail.value?.id === item.id) detail.value = null
+    if (detail.value?.id === item.id) close()
     await load()
   } catch (error) {
     toast.error(String((error as Error)?.message ?? '删除失败'))
@@ -295,7 +332,7 @@ function toggleServer(id: string, keep: boolean) {
 }
 
 onMounted(load)
-onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.value) })
+onBeforeUnmount(close)
 </script>
 
 <template>
@@ -321,16 +358,17 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
         </div>
       </div>
 
+      <YdAlert v-if="loadError" variant="destructive" title="模板加载失败" :description="loadError" />
       <div v-if="loading" class="qqrobot-empty">加载中…</div>
-      <div v-else-if="!records.length" class="qqrobot-empty">还没有模板，点「新建模板」开始。</div>
+      <div v-else-if="!records.length && !loadError && !detail" class="qqrobot-empty">还没有模板，点「新建模板」开始。</div>
       <div v-else-if="!detail" class="qqrobot-template-grid">
         <article v-for="item in records" :key="item.id" class="qqrobot-template-card">
-          <div class="qqrobot-template-cover" @click="open(item.id)">
+          <YdAction class="qqrobot-template-cover" :aria-label="`配置模板：${item.name}`" @click="open(item.id)">
             <img v-if="item.cover" :src="item.cover" :alt="item.name">
             <div v-else class="qqrobot-template-fallback">{{ item.name.slice(0, 2) }}</div>
             <span class="qqrobot-template-version">v{{ item.version }}</span>
             <span v-if="item.builtin" class="qqrobot-template-builtin">内置</span>
-          </div>
+          </YdAction>
           <div class="qqrobot-template-body">
             <h3>{{ item.name }}</h3>
             <p>{{ item.description || '暂无描述' }}</p>
@@ -341,8 +379,8 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
           <footer class="qqrobot-template-foot">
             <span class="qqrobot-muted">{{ item.author }}</span>
             <div class="qqrobot-template-actions">
-              <button type="button" @click="open(item.id)">配置</button>
-              <button type="button" class="danger" @click="remove(item)">删除</button>
+              <YdButton size="sm" variant="outline" @click="open(item.id)">配置</YdButton>
+              <YdButton size="sm" variant="ghost" @click="remove(item)">删除</YdButton>
             </div>
           </footer>
         </article>
@@ -351,14 +389,12 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
       <section v-if="detail" class="qqrobot-tpl-editor">
         <header class="qqrobot-tpl-head">
           <div>
-            <button type="button" class="qqrobot-tpl-back" @click="close">← 模板列表</button>
+            <YdButton variant="ghost" size="sm" @click="close">返回模板列表</YdButton>
             <h2>{{ detail.name }}</h2>
             <p>v{{ detail.version }} · {{ detail.width }}px 基准宽度 · {{ detail.author }}</p>
           </div>
           <div class="qqrobot-tpl-head-actions">
-            <label class="qqrobot-upload">上传封面
-              <input type="file" accept="image/png,image/jpeg,image/svg+xml" @change="uploadCover">
-            </label>
+            <YdFilePicker accept="image/png,image/jpeg,image/svg+xml" label="上传封面" @select="uploadCover"><template #default="{ open, triggerAttrs }"><YdButton v-bind="triggerAttrs" variant="outline" @click="open">上传封面</YdButton></template></YdFilePicker>
             <YdButton variant="ghost" @click="close">关闭</YdButton>
             <YdButton variant="outline" @click="refreshPreview">刷新预览</YdButton>
             <YdButton :loading="saving" @click="save">保存配置</YdButton>
@@ -366,20 +402,10 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
         </header>
 
         <div class="qqrobot-tpl-body">
-          <nav class="qqrobot-tpl-nav">
-            <button
-              v-for="item in groups"
-              :key="item.id"
-              type="button"
-              class="qqrobot-doc-link"
-              :class="{ on: activeGroup === item.id }"
-              @click="jump(item.id)"
-            >{{ item.label }}</button>
-          </nav>
 
-          <div class="qqrobot-tpl-form">
-            <section id="qqrobot-tpl-display" class="qqrobot-tpl-section">
-              <header><h3>基础显示设置</h3></header>
+
+          <YdSettingsLayout v-model="activeGroup" :list="groups" surface align="start" class="qqrobot-tpl-form">
+            <template #display><YdSettingsSection title="基础显示设置" description="">
               <div class="qqrobot-grid">
                 <label class="qqrobot-field">
                   <span>标题</span>
@@ -463,13 +489,9 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
                   </span>
                 </label>
               </div>
-            </section>
+            </YdSettingsSection></template>
 
-            <section v-if="isServerList" id="qqrobot-tpl-servers" class="qqrobot-tpl-section">
-              <header>
-                <h3>服务器筛选</h3>
-                <p>列表来自 Minecraft 服务器插件；勾选「保留」只显示这些，勾选「排除」隐藏这些</p>
-              </header>
+            <template #servers><YdSettingsSection title="服务器筛选" description="列表来自 Minecraft 服务器插件；勾选「保留」只显示这些，勾选「排除」隐藏这些">
               <div v-if="!serverAvailable" class="qqrobot-blocked">
                 <strong>没有检测到 Minecraft 服务器插件</strong>
                 <p>启用 <code>minecraft-server</code> 插件并添加服务器后，这里会自动出现可选项。</p>
@@ -496,10 +518,9 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
                 已保留 {{ includedServers.length }} 个，已排除 {{ excludedServers.length }} 个；
                 两边都为空时显示全部启用的服务器。
               </p>
-            </section>
+            </YdSettingsSection></template>
 
-            <section id="qqrobot-tpl-avatar" class="qqrobot-tpl-section">
-              <header><h3>玩家头像设置</h3></header>
+            <template #avatar><YdSettingsSection title="玩家头像设置" description="">
               <div class="qqrobot-grid">
                 <label class="qqrobot-field">
                   <span>玩家头像源</span>
@@ -514,10 +535,9 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
                   ]" @update:model-value="patch({ avatarStyle: $event })" />
                 </label>
               </div>
-            </section>
+            </YdSettingsSection></template>
 
-            <section id="qqrobot-tpl-background" class="qqrobot-tpl-section">
-              <header><h3>背景设置</h3></header>
+            <template #background><YdSettingsSection title="背景设置" description="">
               <div class="qqrobot-grid">
                 <label class="qqrobot-field">
                   <span>背景来源</span>
@@ -546,21 +566,13 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
                     :tooltip="false" @update:model-value="patch({ darken: $event?.[0] ?? 45 })" />
                 </div>
               </div>
-            </section>
+            </YdSettingsSection></template>
 
-            <section id="qqrobot-tpl-css" class="qqrobot-tpl-section">
-              <header>
-                <h3>自定义 CSS</h3>
-                <p>用于微调字体、颜色、间距；只作用在这张模板上</p>
-              </header>
-              <textarea class="qqrobot-css" spellcheck="false"
-                :value="String(settings.customCss ?? '')"
-                placeholder=".title { color: #ffffff; }"
-                @input="patch({ customCss: ($event.target as HTMLTextAreaElement).value })" />
-            </section>
+            <template #css><YdSettingsSection title="自定义 CSS" description="用于微调字体、颜色、间距；只作用在这张模板上">
+              <YdTextarea :rows="8" spellcheck="false" :model-value="String(settings.customCss ?? '')" placeholder=".title { color: #ffffff; }" @update:model-value="patch({ customCss: String($event ?? '') })" />
+            </YdSettingsSection></template>
 
-            <section id="qqrobot-tpl-cache" class="qqrobot-tpl-section">
-              <header><h3>缓存与性能</h3></header>
+            <template #cache><YdSettingsSection title="缓存与性能" description="">
               <div class="qqrobot-switch-list">
                 <label class="qqrobot-switch-row">
                   <span><strong>缓存服务器和玩家数据</strong><small>减少向服务端查询的次数；随机图 API 不受影响</small></span>
@@ -590,10 +602,9 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
                     @update:model-value="patch({ avatarCacheSeconds: Number($event) || 0 })" />
                 </label>
               </div>
-            </section>
+            </YdSettingsSection></template>
 
-            <section id="qqrobot-tpl-meta" class="qqrobot-tpl-section">
-              <header><h3>模板信息</h3></header>
+            <template #meta><YdSettingsSection title="模板信息" description="">
               <div class="qqrobot-grid">
                 <label class="qqrobot-field">
                   <span>名称</span>
@@ -630,20 +641,20 @@ onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.val
               </div>
               <details class="qqrobot-advanced">
                 <summary>高级：直接编辑模板 HTML</summary>
-                <textarea v-model="detail.html" class="qqrobot-css" spellcheck="false" />
+                <YdTextarea v-model="detail.html" :rows="14" spellcheck="false" aria-label="模板 HTML" />
                 <small class="qqrobot-muted">服务器在线列表的 HTML 由上面的配置生成，手改会在下次保存时被覆盖。</small>
               </details>
-            </section>
-          </div>
+            </YdSettingsSection></template>
+          </YdSettingsLayout>
 
           <aside class="qqrobot-tpl-preview">
             <div class="qqrobot-tpl-preview-head">
               <strong>实时预览</strong>
-              <button type="button" @click="refreshPreview">刷新</button>
+              <YdButton size="sm" variant="ghost" :loading="previewLoading" @click="refreshPreview">刷新</YdButton>
             </div>
+            <p v-if="previewError" role="alert" class="qqrobot-preview-error">{{ previewError }}</p>
             <img v-if="previewUrl" :key="previewStamp" :src="previewUrl" alt="模板预览">
-            <p v-else-if="previewError" class="qqrobot-preview-error">{{ previewError }}</p>
-            <div v-else class="qqrobot-preview-skeleton">正在出图…</div>
+            <div v-else-if="previewLoading" class="qqrobot-preview-skeleton">正在出图…</div>
             <p class="qqrobot-muted">用示例变量出图；保存后按真实服务器数据渲染。</p>
           </aside>
         </div>

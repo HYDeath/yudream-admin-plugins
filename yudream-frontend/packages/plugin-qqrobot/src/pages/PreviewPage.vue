@@ -9,9 +9,11 @@ const { status, checking, check } = useRenderStatus(props.sdk)
 const loading = ref(false)
 const failed = ref(false)
 const message = ref('')
+const imageErrors = ref<Record<string, string>>({})
 const images = ref<Record<string, string>>({})
 const stamps = ref<Record<string, number>>({})
 const urls = new Set<string>()
+let disposed = false
 
 const cards = [
   { key: 'inventory', title: '背包渲染模型', hint: '主存储 27 格、快捷栏 9 格、护甲与副手' },
@@ -27,6 +29,7 @@ const cards = [
 async function loadImage(key: string) {
   const path = `/admin/preview/${key}.png`
   const response = await props.sdk.http.blob(`${path}?v=${Date.now()}`)
+  if (disposed) return
   const objectUrl = URL.createObjectURL(response.data)
   const previous = images.value[key]
   if (previous) {
@@ -41,11 +44,13 @@ async function loadImage(key: string) {
 async function loadAll() {
   failed.value = false
   message.value = ''
+  imageErrors.value = {}
   await Promise.all(cards.map(async (card) => {
     try {
       await loadImage(card.key)
     }
     catch (error) {
+      imageErrors.value = { ...imageErrors.value, [card.key]: String((error as Error)?.message ?? '出图失败') }
       failed.value = true
       message.value = String((error as Error)?.message ?? '预览出图失败')
     }
@@ -53,6 +58,7 @@ async function loadAll() {
 }
 
 async function refresh() {
+  if (loading.value) return
   loading.value = true
   try {
     await check()
@@ -63,12 +69,10 @@ async function refresh() {
   }
 }
 
-onMounted(async () => {
-  await check()
-  await refresh()
-})
+onMounted(refresh)
 
 onBeforeUnmount(() => {
+  disposed = true
   urls.forEach(url => URL.revokeObjectURL(url))
   urls.clear()
 })
@@ -103,7 +107,8 @@ onBeforeUnmount(() => {
             {{ card.title }}
             <span class="qqrobot-muted">{{ card.hint }}</span>
           </figcaption>
-          <img v-if="images[card.key]" :key="stamps[card.key]" :src="images[card.key]" :alt="card.title">
+          <div v-if="imageErrors[card.key]" class="qqrobot-preview-error" role="alert">{{ imageErrors[card.key] }}。请重新渲染。</div>
+          <img v-else-if="images[card.key]" :key="stamps[card.key]" :src="images[card.key]" :alt="card.title">
           <div v-else class="qqrobot-preview-skeleton">加载中…</div>
         </figure>
       </div>

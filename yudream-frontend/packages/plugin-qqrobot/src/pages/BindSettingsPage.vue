@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import {
+  YdAlert,
+  YdSettingsLayout,
+  YdSettingsSection,
   YdButton,
   YdInput,
   YdLoadingOverlay,
@@ -20,16 +23,19 @@ const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
 const loading = ref(true)
 const saving = ref(false)
+const loaded = ref(false)
+const loadError = ref('')
 const draft = ref<BindSettings>(emptyBindSettings())
 const commandDraft = ref('')
 const activeAnchor = ref('mode')
 
 const anchors = [
-  { id: 'mode', label: '绑定模式' },
-  { id: 'code', label: '验证码' },
-  { id: 'message', label: '消息模板' },
-  { id: 'event', label: '联动事件' },
-  { id: 'card', label: '群名片更改' },
+  { value: 'mode', label: '绑定模式' },
+  { value: 'code', label: '验证码' },
+  { value: 'message', label: '消息模板' },
+  { value: 'event', label: '联动事件' },
+  { value: 'leave', label: '退群处理' },
+  { value: 'card', label: '群名片更改' },
 ]
 const modeOptions = [
   { label: '双向验证', value: 'dual' },
@@ -42,11 +48,15 @@ const charsetOptions = [
 
 async function load() {
   loading.value = true
+  loaded.value = false
+  loadError.value = ''
   try {
     draft.value = await api.bindSettings()
+    loaded.value = true
   }
   catch (error) {
-    toast.error(String((error as Error)?.message ?? '加载绑定设置失败'))
+    loadError.value = String((error as Error)?.message ?? '加载绑定设置失败')
+    toast.error(loadError.value)
   }
   finally {
     loading.value = false
@@ -54,6 +64,7 @@ async function load() {
 }
 
 async function save() {
+  if (!loaded.value || loading.value || saving.value) return
   saving.value = true
   try {
     draft.value = await api.saveBindSettings(draft.value)
@@ -87,11 +98,6 @@ function setIgnoredPermissionGroups(value: string) {
   draft.value.ignoredPermissionGroups = value.split(/[\n,，]/).map(item => item.trim()).filter(Boolean)
 }
 
-function jump(id: string) {
-  activeAnchor.value = id
-  const el = document.getElementById(`qqrobot-anchor-${id}`)
-  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
 
 const messageFields = computed(() => [
   { key: 'unboundKickMessage', label: '未绑定账号踢出消息', hint: '玩家未绑定就进强制绑定服时看到' },
@@ -107,36 +113,14 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="绑定设置" description="社交账号与游戏账号的绑定方式、验证码与消息模板">
+      <YdButton variant="outline" :disabled="loading || saving" @click="load">重新加载</YdButton>
+      <YdButton :loading="saving" :disabled="!loaded || loading" @click="save">保存设置</YdButton>
     </YdPageHeader>
-    <div class="qqrobot-body">
-      <YdLoadingOverlay :loading="loading">
-        <div class="qqrobot-doc">
-          <nav class="qqrobot-doc-nav">
-            <button
-              v-for="item in anchors"
-              :key="item.id"
-              type="button"
-              class="qqrobot-doc-link"
-              :class="{ on: activeAnchor === item.id }"
-              @click="jump(item.id)"
-            >{{ item.label }}</button>
-          </nav>
-
-          <div class="qqrobot-doc-body">
-            <section id="qqrobot-anchor-mode" class="qqrobot-doc-section">
-              <header>
-                <h3>绑定模式</h3>
-                <p>决定绑定是双向验证，还是完全信任社交平台身份</p>
-              </header>
-              <div class="qqrobot-segment">
-                <button
-                  v-for="item in modeOptions"
-                  :key="item.value"
-                  type="button"
-                  :class="{ on: draft.bindMode === item.value }"
-                  @click="draft.bindMode = item.value as BindSettings['bindMode']"
-                >{{ item.label }}</button>
-              </div>
+    <YdAlert v-if="loadError" variant="destructive" title="设置加载失败" :description="loadError" class="qqrobot-load-error" />
+    <YdLoadingOverlay :loading="loading">
+      <YdSettingsLayout v-model="activeAnchor" :list="anchors" surface width-class="max-w-5xl">
+<template #mode><YdSettingsSection title="绑定模式" description="决定绑定是双向验证，还是完全信任社交平台身份">
+              <YdSelect v-model="draft.bindMode" :options="modeOptions" aria-label="绑定模式" />
               <p class="qqrobot-muted">
                 {{ draft.bindMode === 'dual'
                   ? '玩家在 QQ 获取验证码后，需进服在聊天栏输入验证码，两边都确认才完成绑定。'
@@ -173,13 +157,8 @@ onMounted(load)
                   <YdSwitch v-model="draft.allowUnbind" />
                 </label>
               </div>
-            </section>
-
-            <section id="qqrobot-anchor-code" class="qqrobot-doc-section">
-              <header>
-                <h3>验证码</h3>
-                <p>验证码由 QQ 侧生成，玩家进服后在聊天栏输入</p>
-              </header>
+            </YdSettingsSection></template>
+<template #code><YdSettingsSection title="验证码" description="验证码由 QQ 侧生成，玩家进服后在聊天栏输入">
               <div class="qqrobot-grid">
                 <label class="qqrobot-field">
                   <span>生成模式</span>
@@ -212,13 +191,8 @@ onMounted(load)
                   <span class="qqrobot-sample-hint">{{ draft.codeTtlMinutes }} 分钟内有效</span>
                 </div>
               </div>
-            </section>
-
-            <section id="qqrobot-anchor-message" class="qqrobot-doc-section">
-              <header>
-                <h3>消息模板</h3>
-                <p>支持 &amp; 颜色代码；可用占位符 #account（社交账号）、#name（昵称）、#why（失败原因）</p>
-              </header>
+            </YdSettingsSection></template>
+<template #message><YdSettingsSection title="消息模板" description="支持 &amp; 颜色代码；可用占位符 #account（社交账号）、#name（昵称）、#why（失败原因）">
               <div class="qqrobot-message-list">
                 <label v-for="field in messageFields" :key="field.key" class="qqrobot-message-item">
                   <span class="qqrobot-message-label">
@@ -228,13 +202,8 @@ onMounted(load)
                   <YdTextarea v-model="draft[field.key]" :rows="2" />
                 </label>
               </div>
-            </section>
-
-            <section id="qqrobot-anchor-event" class="qqrobot-doc-section">
-              <header>
-                <h3>联动事件</h3>
-                <p>玩家绑定成功后，以控制台身份在绑定所在服务器执行命令，可对接其他插件的发放逻辑</p>
-              </header>
+            </YdSettingsSection></template>
+<template #event><YdSettingsSection title="联动事件" description="玩家绑定成功后，以控制台身份在绑定所在服务器执行命令，可对接其他插件的发放逻辑">
               <div class="qqrobot-inline">
                 <YdInput v-model="commandDraft" placeholder="例如 give $player diamond 1"
                   @keyup.enter="addCommand" />
@@ -248,24 +217,23 @@ onMounted(load)
               <div class="qqrobot-command-list">
                 <code v-for="command in draft.bindSuccessCommands" :key="command">
                   {{ command }}
-                  <button type="button" @click="removeCommand(command)">×</button>
+                  <YdButton size="sm" variant="ghost" :aria-label="`移除命令 ${command}`" @click="removeCommand(command)">移除</YdButton>
                 </code>
                 <span v-if="!draft.bindSuccessCommands.length" class="qqrobot-muted">
                   暂无联动命令，绑定成功时不做额外操作。
                 </span>
               </div>
-            </section>
-
-            <section id="qqrobot-anchor-card" class="qqrobot-doc-section">
-              <header>
-                <h3>群名片更改</h3>
-                <p>绑定成功后按该成员名下的全部游戏账号更新群名片；消息校正会增加一次绑定查询。</p>
-              </header>
-              <div class="qqrobot-switch-list">
+            </YdSettingsSection></template>
+<template #leave><YdSettingsSection title="退群处理" description="先在群组管理中配置并启用目标群，再开启自动解绑；成员离群时按绑定身份清理游戏账号。">
+<div class="qqrobot-switch-list">
                 <label class="qqrobot-switch-row">
-                  <span><strong>退群时自动解绑所有账号</strong><small>成员退群后删除该社交账号名下的全部游戏绑定。</small></span>
+                  <span><strong>退群时自动解绑所有账号</strong><small>QQ 号清理其全部游戏绑定；官方 OpenID 仅清理相同连接、相同群内的绑定。</small></span>
                   <YdSwitch v-model="draft.autoUnbindOnGroupLeave" />
-                </label>
+                </label></div>
+<p class="qqrobot-muted">这里清理 QQ 与游戏角色的绑定；站点登录身份单独管理。</p>
+</YdSettingsSection></template>
+<template #card><YdSettingsSection title="群名片更改" description="绑定成功后按该成员名下的全部游戏账号更新群名片；消息校正会增加一次绑定查询。">
+              <div class="qqrobot-switch-list">
                 <label class="qqrobot-switch-row">
                   <span><strong>绑定成功后改名</strong><small>绑定或解绑成功后将群名片改为已绑定的游戏账号，多个账号用空格分隔。</small></span>
                   <YdSwitch v-model="draft.renameOnBindSuccess" />
@@ -294,17 +262,8 @@ onMounted(load)
                   @update:model-value="setIgnoredPermissionGroups(String($event ?? ''))" />
                 <small class="qqrobot-muted">事件中的角色名命中任意一项时跳过改名。</small>
               </label>
-            </section>
-          </div>
-        </div>
-      </YdLoadingOverlay>
-      <div class="qqrobot-save-bar">
-        <span class="qqrobot-muted">修改后需保存才会生效</span>
-        <div class="qqrobot-save-actions">
-          <YdButton variant="outline" :disabled="saving || loading" @click="load">重置</YdButton>
-          <YdButton :loading="saving" @click="save">保存设置</YdButton>
-        </div>
-      </div>
-    </div>
+            </YdSettingsSection></template>
+      </YdSettingsLayout>
+    </YdLoadingOverlay>
   </div>
 </template>

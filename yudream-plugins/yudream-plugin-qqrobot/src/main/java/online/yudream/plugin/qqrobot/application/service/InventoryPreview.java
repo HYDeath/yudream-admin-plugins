@@ -26,13 +26,13 @@ public class InventoryPreview {
     }
 
     public CompletableFuture<PluginRenderedImage> sample() {
-        return renderer.inventory("背包预览", sampleItems(), avatars.body("Steve"),
+        return renderer.inventory("背包预览", sampleItems(), avatars.views("Steve"),
                 "Steve · 瑶光天工", sampleContainers());
     }
 
     /** 只出容器页：对齐服务端 /末影箱、/潜影盒 的上报形态（items 为空）。 */
     public CompletableFuture<PluginRenderedImage> containerSample() {
-        return renderer.inventory("容器预览", List.of(), avatars.body("Steve"),
+        return renderer.inventory("容器预览", List.of(), avatars.views("Steve"),
                 "末影箱 + 2 个潜影盒", sampleContainers());
     }
 
@@ -96,14 +96,17 @@ public class InventoryPreview {
         items.set(3, item("minecraft:water_bucket", 1, "", List.of(), List.of(), "common"));
         items.set(4, item("minecraft:netherite_pickaxe", 1, "", List.of(), List.of("efficiency V"), "rare"));
         items.set(9, shulker());
+        ItemView building = shulker();
+        items.set(14, new ItemView(building.itemId(), 1, 0, 0, "&d建材箱", List.of(), List.of(), "", "epic", 0, building.container()));
         items.set(10, item("minecraft:enchanted_book", 1, "&d经验修补", List.of("&7可应用于任意可附魔物品"),
                 List.of("mending I"), "rare"));
         items.set(12, item("minecraft:cooked_beef", 32, "", List.of(), List.of(), "common"));
         items.set(20, damaged("minecraft:elytra", 1, 216, 432, "&5鞘翅", List.of(), List.of(), "epic"));
-        items.set(36, item("minecraft:netherite_helmet", 1, "", List.of(), List.of("protection IV"), "rare"));
-        items.set(37, item("minecraft:netherite_chestplate", 1, "", List.of(), List.of("protection IV"), "rare"));
-        items.set(38, item("minecraft:netherite_leggings", 1, "", List.of(), List.of("protection IV"), "rare"));
-        items.set(39, item("minecraft:netherite_boots", 1, "", List.of(), List.of("protection IV"), "rare"));
+        // 与服务端 PlayerInventory.getContents() 一致：36 靴子、37 护腿、38 胸甲、39 头盔。
+        items.set(36, item("minecraft:netherite_boots", 1, "", List.of(), List.of("protection IV"), "rare"));
+        items.set(37, item("minecraft:netherite_leggings", 1, "", List.of(), List.of("protection IV"), "rare"));
+        items.set(38, item("minecraft:netherite_chestplate", 1, "", List.of(), List.of("protection IV"), "rare"));
+        items.set(39, item("minecraft:netherite_helmet", 1, "", List.of(), List.of("protection IV"), "rare"));
         items.set(40, item("minecraft:shield", 1, "", List.of(), List.of(), "common"));
         return items;
     }

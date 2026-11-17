@@ -46,6 +46,7 @@ public class TemplateService {
     private online.yudream.plugin.qqrobot.bridge.BridgeHub bridge;
     /** 服务器在线列表的数据来源；为空时退回内置示例变量。 */
     private ServerListData servers;
+    private BindingService bindings;
     /**
      * 文件存储不可用（未部署对象存储）时的兜底：把封面留在内存里。
      * 只在当前进程有效，重启后重新预热；总比模板列表全是空卡片好。
@@ -254,14 +255,15 @@ public class TemplateService {
         Map<String, Object> scope;
         if (variables == null || variables.isEmpty()) {
             // 没传变量时按模板配置生成示例：服务器列表优先用真实服务器台账。
-            scope = servers != null ? servers.variables(template.settings())
+            scope = servers != null && "builtin-server-list".equals(template.id())
+                    ? servers.variables(template.settings())
                     : BuiltinTemplates.sampleVariables(template.id(), avatars);
             boolean emptyServers = !(scope.get("servers") instanceof List<?> rows) || rows.isEmpty();
             if (emptyServers) {
                 scope = BuiltinTemplates.sampleVariables(template.id(), avatars);
             }
         } else {
-            scope = variables;
+            scope = fillBindingState(template.id(), variables);
         }
         scope = withBackground(template, scope);
         scope = applyApiSelection(template.settings(), scope);
@@ -339,6 +341,60 @@ public class TemplateService {
 
     public void attachBridge(online.yudream.plugin.qqrobot.bridge.BridgeHub bridge) {
         this.bridge = bridge;
+    }
+
+    public void attachBindings(BindingService bindings) {
+        this.bindings = bindings;
+    }
+
+    /** 真实玩家卡以游戏绑定记录为准；示例预览仍由 sampleVariables 单独提供。 */
+    Map<String, Object> fillBindingState(String templateId, Map<String, Object> variables) {
+        if (bindings == null || !"builtin-player-card".equals(templateId)) {
+            return variables;
+        }
+        String socialId = variableText(variables, "socialId", "openid");
+        String player = socialId.isBlank() ? variableText(variables, "player", "name")
+                : variableText(variables, "player");
+        Optional<online.yudream.plugin.qqrobot.domain.BindingRecord> record;
+        if (!socialId.isBlank()) {
+            record = player.isBlank() ? bindings.bySocial(socialId, 1, 1).stream().findFirst()
+                    : bindings.find(socialId, player);
+        } else {
+            record = player.isBlank() ? Optional.empty() : bindings.findByPlayer(player);
+        }
+        Map<String, Object> result = new LinkedHashMap<>(variables);
+        result.put("bound", record.isPresent() ? "已绑定 QQ" : BindingService.UNBOUND_ID);
+        String name = player.isBlank() ? record.map(value -> value.playerName()).orElse("") : player;
+        result.put("name", name.isBlank() ? BindingService.UNBOUND_ID : name);
+        // 占位文案不能作为玩家名发给头像服务或 PlaceholderAPI。
+        if (!name.isBlank()) {
+            result.put("player", name);
+        } else {
+            String placeholder = "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString("""
+                    <svg xmlns="http://www.w3.org/2000/svg" width="150" height="190" viewBox="0 0 150 190">
+                      <circle cx="75" cy="47" r="24" fill="#7c879e"/>
+                      <rect x="43" y="80" width="64" height="65" rx="22" fill="#59647b"/>
+                      <text x="75" y="56" text-anchor="middle" fill="#202634" font-size="26"
+                        font-family="sans-serif">?</text>
+                      <text x="75" y="175" text-anchor="middle" fill="#b8c2d5" font-size="15"
+                        font-family="Microsoft YaHei,Noto Sans SC,sans-serif">未绑定ID</text>
+                    </svg>
+                    """.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            result.put("skin", placeholder);
+            result.put("avatar", placeholder);
+        }
+        for (String key : List.of("uuid", "server", "online", "joined")) {
+            if (variableText(result, key).isBlank()) result.put(key, "—");
+        }
+        return result;
+    }
+
+    private static String variableText(Map<String, Object> variables, String... keys) {
+        for (String key : keys) {
+            Object value = variables.get(key);
+            if (value != null && !String.valueOf(value).isBlank()) return String.valueOf(value).trim();
+        }
+        return "";
     }
 
     /** 注入服务器台账（minecraft-server 插件）；为空时内置模板用示例数据。 */
@@ -439,7 +495,7 @@ public class TemplateService {
 
     /** 用内置示例变量出图，模板列表的缩略图就用它。 */
     public PluginRenderedImage preview(String id) {
-        return render(id, BuiltinTemplates.sampleVariables(id));
+        return render(id, Map.of());
     }
 
     public Optional<byte[]> cachedPreview(String id) {

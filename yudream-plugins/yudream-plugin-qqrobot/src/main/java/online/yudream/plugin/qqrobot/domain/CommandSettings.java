@@ -36,11 +36,12 @@ public record CommandSettings(
     public static final String ACTION_SHULKER = "shulker";
     public static final String ACTION_ONLINE = "online";
     public static final String ACTION_PLAYER = "player";
+    public static final String ACTION_PASSWORD = "password";
     public static final String ACTION_REGISTRATION = "registration";
 
     public static final List<String> ACTIONS = List.of(
             ACTION_BIND, ACTION_UNBIND, ACTION_INVENTORY, ACTION_ENDER_CHEST,
-            ACTION_SHULKER, ACTION_ONLINE, ACTION_PLAYER, ACTION_REGISTRATION);
+            ACTION_SHULKER, ACTION_ONLINE, ACTION_PLAYER, ACTION_REGISTRATION, ACTION_PASSWORD);
 
     public static CommandSettings defaults() {
         return new CommandSettings(false, List.of(), true, List.of(
@@ -58,6 +59,8 @@ public record CommandSettings(
                         List.of("private", "group"), "正在统计在线玩家…"),
                 new CommandBinding(ACTION_PLAYER, "查询", List.of("查询", "玩家", "card"), true,
                         List.of("private", "group"), "正在生成玩家信息卡…"),
+                new CommandBinding(ACTION_PASSWORD, "修改密码", List.of("修改密码", "重置密码", "改密"), true,
+                        List.of("private", "group"), "请前往官网登录页选择「忘记密码」，验证邮箱后修改密码。不要在群聊发送密码。"),
                 new CommandBinding(ACTION_REGISTRATION, "注册审核",
                         List.of("注册", "审核", "registration", "apply"), true,
                         List.of("private", "group"), "正在查询注册审核状态…")

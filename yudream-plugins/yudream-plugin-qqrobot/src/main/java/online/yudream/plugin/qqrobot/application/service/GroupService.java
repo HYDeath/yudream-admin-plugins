@@ -4,6 +4,7 @@ import online.yudream.base.plugin.spi.system.messaging.PluginMessageContent;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessageRequest;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessagingService;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessagingRawService;
+import online.yudream.base.plugin.spi.system.messaging.PluginEvent;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
 import online.yudream.plugin.qqrobot.domain.BindingRecord;
 import online.yudream.plugin.qqrobot.domain.GroupSettings;
@@ -20,6 +21,7 @@ public class GroupService {
     private final SettingsService settings;
     private final PluginMessagingService messaging;
     private final PluginMessagingRawService raw;
+    private final Map<String, Long> welcomed = new java.util.concurrent.ConcurrentHashMap<>();
 
     public GroupService(SettingsService settings, PluginMessagingService messaging) {
         this(settings, messaging, null);
@@ -34,6 +36,46 @@ public class GroupService {
 
     public List<GroupSettings> groups(int page, int size) {
         return settings.groups(page, size);
+    }
+
+    public CompletableFuture<Boolean> welcome(PluginEvent event) {
+        if (event == null || event.channelId() == null || event.channelId().isBlank()
+                || event.userId() == null || event.userId().isBlank() || event.userId().equals(event.selfId())) {
+            return CompletableFuture.completedFuture(false);
+        }
+        GroupSettings group = settings.group(event.channelId());
+        if (!group.enabled() || !group.welcomeEnabled() || group.welcomeMessage().isBlank()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        long now = System.currentTimeMillis();
+        welcomed.entrySet().removeIf(entry -> now - entry.getValue() > 600_000);
+        String key = event.connectionId() + ":" + event.channelId() + ":" + event.userId() + ":" + event.sequence();
+        if (welcomed.putIfAbsent(key, now) != null) return CompletableFuture.completedFuture(false);
+        String template = group.welcomeMessage().replace("#group", group.effectiveDisplayName())
+                .replace("#name", event.userId());
+        CompletableFuture<Boolean> result;
+        if ("official".equalsIgnoreCase(protocol(event.connectionId()))) {
+            Map<String, Object> referrer = new java.util.LinkedHashMap<>(event.referrer());
+            referrer.put("message_scene", "group");
+            if (event.messageId() != null) referrer.put("event_id", event.messageId());
+            result = messaging.send(new PluginMessageRequest(event.connectionId(), event.platform(), event.userId(),
+                    event.channelId(), new PluginMessageContent(PluginMessageContent.Type.TEXT,
+                    template.replace("#mention", "<@" + event.userId() + ">"), null, referrer)))
+                    .toCompletableFuture().thenApply(ignored -> true);
+        } else if (raw != null) {
+            List<Map<String, Object>> segments = new java.util.ArrayList<>();
+            String[] parts = template.split("#mention", -1);
+            for (int index = 0; index < parts.length; index++) {
+                if (index > 0) segments.add(Map.of("type", "mention", "data", Map.of("user_id", Long.parseLong(event.userId()))));
+                if (!parts[index].isEmpty()) segments.add(Map.of("type", "text", "data", Map.of("text", parts[index])));
+            }
+            result = raw.invoke(event.connectionId(), "send_group_message",
+                    Map.of("group_id", Long.parseLong(event.channelId()), "message", segments))
+                    .toCompletableFuture().thenApply(ignored -> true);
+        } else {
+            result = send(event.connectionId(), event.channelId(), template.replace("#mention", "@" + event.userId()));
+        }
+        return result.exceptionally(error -> { welcomed.remove(key); return false; });
     }
 
     public long count() {

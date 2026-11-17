@@ -8,6 +8,7 @@ import {
   YdPagination,
   YdResponsiveTable,
   useYdToast,
+  useYdModal,
 } from '@yudream/components'
 import type { YuDreamPluginSdk } from '@yudream/plugin-sdk'
 import { computed, onMounted, ref } from 'vue'
@@ -17,6 +18,8 @@ import type { BindingRecord, PendingCode } from '../types'
 const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
+const modal = useYdModal()
+const unbinding = ref('')
 
 const records = ref<BindingRecord[]>([])
 const total = ref(0)
@@ -52,6 +55,8 @@ async function load() {
     const result = await api.bindings(page.value, size.value, keyword.value.trim())
     records.value = result.records
     total.value = result.total
+    const last = Math.max(1, Math.ceil(result.total / size.value))
+    if (page.value > last) { page.value = last; await load() }
   }
   catch (exception) {
     error.value = errorMessage(exception)
@@ -62,6 +67,7 @@ async function load() {
 }
 
 async function issue() {
+  if (issuing.value) return
   const player = issuingPlayer.value.trim()
   if (!player) {
     toast.error('请填写游戏角色名')
@@ -82,6 +88,9 @@ async function issue() {
 }
 
 async function unbind(row: BindingRecord) {
+  if (unbinding.value) return
+  if (!await modal.confirm({ title: '解除游戏绑定', content: `解除 ${row.socialId} 与 ${row.playerName} 的绑定？`, confirmButtonText: '解除绑定' })) return
+  unbinding.value = row.id
   try {
     await api.deleteBinding(row.socialId, row.playerName)
     toast.success(`已解除 ${row.playerName} 的绑定`)
@@ -89,6 +98,8 @@ async function unbind(row: BindingRecord) {
   }
   catch (exception) {
     toast.error(errorMessage(exception))
+  } finally {
+    unbinding.value = ''
   }
 }
 
@@ -124,11 +135,7 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="绑定管理" description="查看社交账号与游戏角色的绑定关系，或为指定角色直接签发绑定码">
-      <template #actions>
-        <YdInput v-model="keyword" class="qqrobot-search" placeholder="按社交账号筛选" @keyup.enter="page = 1; load()" />
-        <YdButton variant="outline" @click="page = 1; load()">筛选</YdButton>
-        <YdButton v-if="keyword" variant="ghost" @click="resetSearch">清除</YdButton>
-      </template>
+
     </YdPageHeader>
     <div class="qqrobot-body">
       <YdAlert v-if="error" title="加载失败" :description="error" />
@@ -158,25 +165,30 @@ onMounted(load)
             <p>解绑后该社交账号需要重新获取验证码；已绑定角色不会自动从游戏内移除。</p>
           </div>
         </header>
+      <div class="qqrobot-toolbar-actions">
+        <YdInput v-model="keyword" class="qqrobot-search" placeholder="按社交账号筛选" @keyup.enter="page = 1; load()" />
+        <YdButton variant="outline" @click="page = 1; load()">筛选</YdButton>
+        <YdButton v-if="keyword" variant="ghost" @click="resetSearch">清除</YdButton>
+      </div>
         <YdResponsiveTable :columns="columns" :data="records" row-key="id" :loading="loading"
           empty-text="还没有绑定记录。玩家在 QQ 里完成绑定后会出现在这里。">
           <template #cell-serverId="{ row }">
-            <span class="qqrobot-muted">{{ (row as any).original?.serverId || '不限' }}</span>
+            <span class="qqrobot-muted">{{ row.original?.serverId || '不限' }}</span>
           </template>
           <template #cell-boundAt="{ row }">
-            <span class="qqrobot-muted">{{ relative((row as any).original?.boundAt) }}</span>
+            <span class="qqrobot-muted">{{ relative(row.original?.boundAt) }}</span>
           </template>
           <template #cell-actions="{ row }">
             <YdButton size="sm" variant="outline" class="qqrobot-danger"
-              @click="unbind((row as any).original)">解绑</YdButton>
+              :disabled="Boolean(unbinding)" :loading="unbinding === row.original.id" @click="unbind(row.original)">解绑</YdButton>
           </template>
           <template #card="{ row }">
             <div class="qqrobot-binding-card">
-              <strong>{{ (row as any).original?.playerName }}</strong>
-              <span class="qqrobot-muted">{{ (row as any).original?.socialName || (row as any).original?.socialId }}</span>
-              <span class="qqrobot-muted">{{ relative((row as any).original?.boundAt) }}</span>
+              <strong>{{ row?.playerName }}</strong>
+              <span class="qqrobot-muted">{{ row?.socialName || row?.socialId }}</span>
+              <span class="qqrobot-muted">{{ relative(row?.boundAt) }}</span>
               <YdButton size="sm" variant="outline" class="qqrobot-danger"
-                @click="unbind((row as any).original)">解绑</YdButton>
+                :disabled="Boolean(unbinding)" :loading="unbinding === row.id" @click="unbind(row)">解绑</YdButton>
             </div>
           </template>
         </YdResponsiveTable>

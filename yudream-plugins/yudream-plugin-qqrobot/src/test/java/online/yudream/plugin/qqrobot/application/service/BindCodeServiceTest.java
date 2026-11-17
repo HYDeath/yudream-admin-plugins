@@ -9,6 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BindCodeServiceTest {
     @Test
+    void wrongPlayerCannotConsumeCodeAndQqIssuedCodeCanChooseServer() {
+        var service = new BindCodeService();
+        var code = service.issue("Steve", "", "member", "", online.yudream.plugin.qqrobot.domain.BindSettings.defaults());
+        org.junit.jupiter.api.Assertions.assertTrue(service.takeForPlayer(code.code(), "Alex", "survival").isEmpty());
+        org.junit.jupiter.api.Assertions.assertTrue(service.peek(code.code()).isPresent());
+        org.junit.jupiter.api.Assertions.assertEquals("member", service.takeForPlayer(code.code(), "Steve", "survival").orElseThrow().socialId());
+        org.junit.jupiter.api.Assertions.assertTrue(service.takeForPlayer(code.code(), "Steve", "survival").isEmpty());
+    }
+
+    @Test
     void codeIsSingleUseAndScopedToPlayerAndServer() {
         BindCodeService service = new BindCodeService();
         BindSettings settings = BindSettings.defaults();

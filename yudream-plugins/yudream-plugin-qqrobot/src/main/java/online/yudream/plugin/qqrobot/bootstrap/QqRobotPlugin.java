@@ -37,6 +37,7 @@ import java.util.List;
         description = "QQ 机器人接入、绑定与群组管理、图片模板、资源市场、背包与潜影盒渲染，并为服务端插件提供桥接",
         icon = "i-ri:robot-2-line")
 @PluginPermissions({
+        @PluginPermission(code = "plugin:qqrobot:view", name = "查询我的游戏账号", module = "平台插件", description = "AI 只读查询当前账号自己的游戏绑定"),
         @PluginPermission(code = QqRobotPlugin.MANAGE_PERMISSION, name = "管理 QQ机器人", module = "平台插件",
                 description = "维护 QQ 机器人接入、绑定设置、群组策略、图片模板、资源市场与服务端桥接")
 })
@@ -72,7 +73,7 @@ import java.util.List;
 })
 public class QqRobotPlugin implements YuDreamPlugin {
     public static final String CODE = "qqrobot";
-    public static final String VERSION = "0.6.2";
+    public static final String VERSION = "0.7.0";
     public static final String MANAGE_PERMISSION = "plugin:qqrobot:manage";
 
     private BridgeHub bridge;
@@ -80,8 +81,18 @@ public class QqRobotPlugin implements YuDreamPlugin {
     @Override
     public void onEnable(PluginContext context) {
         SettingsService settings = new SettingsService(context.documents());
+        context.exposeService(online.yudream.plugin.qqrobot.api.QqGroupPolicyApi.class, (groupId, action) -> {
+            if (groupId == null || groupId.isBlank()) return true;
+            var group = settings.group(groupId);
+            return group.enabled() && switch (action) {
+                case "bind", "unbind" -> group.bindEnabled();
+                case "password" -> group.passwordEnabled();
+                default -> group.queryEnabled();
+            };
+        });
         BindCodeService codes = new BindCodeService();
         BindingService bindings = new BindingService(context.documents(), settings);
+        context.registerAiTool(new online.yudream.plugin.qqrobot.application.service.MyGameAccountsAiTool(context.framework().users(), bindings, settings));
         GroupService groups = new GroupService(settings, context.framework().messaging(),
                 context.framework().messagingRaw());
         // 出图统一走宿主「消息渲染」能力（独立 Headless Chromium），插件内不启动浏览器。
@@ -104,6 +115,7 @@ public class QqRobotPlugin implements YuDreamPlugin {
                 "/api/plugins/qqrobot/templates", avatars);
         templates.seedDefaults();
         templates.attachBridge(bridge);
+        templates.attachBindings(bindings);
         // 服务器在线列表的数据来自 minecraft-server 插件；桥接只补玩家名册。
         ServerListData serverData = new ServerListData(new MinecraftServerDirectory(context));
         serverData.attachBridge(bridge);
@@ -127,22 +139,24 @@ public class QqRobotPlugin implements YuDreamPlugin {
         qqBot.attachBridge(bridge);
         qqBot.attachGroups(groups);
         qqBot.attachMessaging(context.framework().messaging());
-        // 自有快捷词未命中时，把消息交给宿主统一命令总线，复用其它插件的 @PluginCommand。
-        qqBot.attachCommandService(context.framework().commands(), context.framework().users());
-        // 入站统一由宿主消息端口分发：私聊/群聊指令、好友添加、入群通知。
-        // 官方 Webhook 仍保留，兼容只在开放平台回调里落事件的老部署。
-        context.onDispose(context.interactions().onMessage(
-                new PluginInteractionFilter(java.util.Set.of("message_receive"), null, null, null),
-                qqBot::onEvent));
-        context.onDispose(context.interactions().onNative(
-                new PluginInteractionFilter(java.util.Set.of("friend_add", "group_request", "group_member_decrease"), null, null, null),
-                qqBot::onEvent));
+        // 其它插件的已注册命令由宿主 dispatcher 分发；已发布 SPI 不提供命令重发端口。
+        registerInteractions(context, qqBot);
         context.registerHttpController(new QqBotController(qqBot, settings, secretReader));
 
         context.registerHttpController(new QqRobotController(
                 new QqRobotHttpFacade(settings, bindings, codes, groups, resources, bridge, preview, render, notices,
                         templates, context.secrets(), serverData, registration)));
         context.registerWebSocketHandler(BridgeHub.PATH, new BridgeHandler(bridge));
+    }
+
+    static void registerInteractions(PluginContext context, QqBotService qqBot) {
+        // 当前宿主将成员退群发到 MESSAGE 通道；同时订阅 NATIVE，兼容后续宿主分类修正。
+        context.onDispose(context.interactions().onMessage(
+                new PluginInteractionFilter(java.util.Set.of("message_receive", "group_member_decrease", "group_member_increase"), null, null, null),
+                qqBot::onEvent));
+        context.onDispose(context.interactions().onNative(
+                new PluginInteractionFilter(java.util.Set.of("friend_add", "group_request", "group_member_decrease", "group_member_increase"), null, null, null),
+                qqBot::onEvent));
     }
 
     public BridgeHub bridge() {

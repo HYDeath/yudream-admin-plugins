@@ -80,47 +80,66 @@ public class ItemCardRenderer {
         }
     }
 
+    private static final String[] MAIN_BACKGROUNDS = {"sq-01-courtyard-gate__710x714.jpg", "sq-02-bamboo-frame__710x714.jpg",
+            "sq-03-lantern-hall__710x714.jpg", "sq-04-brocade-panel__710x714.jpg"};
+    private static final String[] CONTAINER_BACKGROUNDS = {"wide-01-scroll-landscape__708x349.jpg",
+            "wide-02-brocade-band__708x349.jpg", "wide-03-river-lantern__708x349.jpg"};
+    private static final java.util.Map<String, String> BACKGROUNDS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static String background(String[] names, String seed) {
+        String name = names[Math.floorMod(seed == null ? 0 : seed.hashCode(), names.length)];
+        return BACKGROUNDS.computeIfAbsent(name, key -> {
+            try (var input = ItemCardRenderer.class.getResourceAsStream("/inventory-backgrounds/" + key)) {
+                if (input == null) throw new IllegalStateException("缺少背包背景资源：" + key);
+                return "data:image/jpeg;base64," + java.util.Base64.getEncoder().encodeToString(input.readAllBytes());
+            } catch (java.io.IOException error) { throw new IllegalStateException("无法读取背包背景", error); }
+        });
+    }
+
     private String inventoryHtml(String title, List<ItemView> items, String skinDataUri, String subtitle,
                                  List<ContainerView> containers) {
         List<ItemView> normalized = items == null ? List.of() : items.stream().map(ItemView::normalized).toList();
-        // 参考 QqRobot 的「玩家背包」版式：左侧护甲两格、中间立体皮肤、右侧副手，
-        // 下方 27 格存储 + 9 格快捷栏。装备不再单列，避免和护甲重复。
-        StringBuilder equipment = new StringBuilder();
-        equipment.append(equipSlot(itemAt(normalized, ARMOR_OFFSET + 3), "头盔"));
-        equipment.append(equipSlot(itemAt(normalized, ARMOR_OFFSET + 2), "胸甲"));
-        equipment.append(equipSlot(itemAt(normalized, ARMOR_OFFSET + 1), "护腿"));
-        equipment.append(equipSlot(itemAt(normalized, ARMOR_OFFSET), "靴子"));
-        String skin = skinDataUri == null || !skinDataUri.startsWith("data:image/")
-                ? "<div class=\"skin-empty\"></div>"
-                : "<img class=\"skin\" src=\"" + skinDataUri + "\" alt=\"\">";
-        String offhand = equipSlot(itemAt(normalized, ARMOR_OFFSET + 4), "副手");
-        StringBuilder storage = new StringBuilder();
-        for (int index = HOTBAR_SLOTS; index < STORAGE_SLOTS + HOTBAR_SLOTS; index++) {
-            storage.append(slot(itemAt(normalized, index), 0));
+        if (normalized.isEmpty() && (containers == null || containers.isEmpty())) {
+            return page("<div id=\"inventory-card\"><div class=\"title\">" + escape(title) + "</div></div>");
         }
-        StringBuilder hotbar = new StringBuilder();
-        for (int index = 0; index < HOTBAR_SLOTS; index++) {
-            hotbar.append(slot(itemAt(normalized, index), 0));
+        if (normalized.isEmpty()) {
+            return page("<div id=\"inventory-card\" class=\"inventory-containers\">"
+                    + String.join("", containers(normalized, containers)) + "</div>");
         }
-        // 只查容器（/末影箱、/潜影盒）时 items 为空，不该铺满两屏空格子。
-        boolean hasInventory = normalized.stream().anyMatch(item -> !item.empty());
-        List<String> containerBlocks = containers(normalized, containers);
-        return page("<div id=\"inventory-card\">"
-                + "<div class=\"head\"><div class=\"title\">" + escape(title) + "</div>"
-                + (subtitle == null || subtitle.isBlank() ? ""
-                : "<div class=\"subtitle\">" + escape(subtitle) + "</div>") + "</div>"
-                + (hasInventory
-                ? "<div class=\"player\">"
-                + "<div class=\"equip left\">" + equipment + "</div>"
-                + "<div class=\"figure\">" + skin + "<div class=\"figure-glow\"></div></div>"
-                + "<div class=\"equip right\">" + offhand + "</div>"
-                + "</div>"
-                + "<div class=\"grid\">" + storage + "</div>"
-                + "<div class=\"section\"><div class=\"section-label\">快捷栏</div><div class=\"grid hotbar\">"
-                + hotbar + "</div></div>"
-                : "")
-                + String.join("", containerBlocks)
-                + "</div>");
+        List<ContainerView> boxes = new java.util.ArrayList<>();
+        if (containers != null) containers.stream().filter(box -> "shulker".equals(box.kind())).forEach(boxes::add);
+        for (int index = 0; index < normalized.size(); index++) {
+            ItemView item = normalized.get(index);
+            String source = slotLabel(index);
+            if (item.openedContainer() && boxes.stream().noneMatch(box -> source.equals(box.sourceSlot())))
+                boxes.add(new ContainerView("shulker", displayName(item), source, item.container()));
+        }
+        StringBuilder storage = new StringBuilder(), hotbar = new StringBuilder(), equipment = new StringBuilder();
+        for (int index = 9; index < 36; index++) storage.append(markedSlot(itemAt(normalized, index), index, boxes));
+        for (int index = 0; index < 9; index++) hotbar.append("<div class=\"hotbar-cell\"><span class=\"hotkey\">" + (index + 1)
+                + "</span>" + markedSlot(itemAt(normalized, index), index, boxes) + "</div>");
+        for (int index = 39; index >= 36; index--) equipment.append(equipSlot(itemAt(normalized, index), slotLabel(index)));
+        String skin = skinDataUri != null && skinDataUri.startsWith("data:image/")
+                ? "<img class=\"skin\" src=\"" + escape(skinDataUri) + "\" alt=\"玩家皮肤正背面\">" : "<div class=\"skin-empty\">皮肤暂不可用</div>";
+        String summary = boxes.isEmpty() ? "该玩家背包中未发现潜影盒" : "潜影盒共 " + boxes.size() + " 个 · 发送「潜影盒」按编号打开";
+        return page("<div id=\"inventory-card\" class=\"inventory-main\" style=\"background-image:linear-gradient(180deg,rgba(8,11,16,.18),rgba(8,11,16,.84)),url('"
+                + background(MAIN_BACKGROUNDS, title) + "')\"><div class=\"head\"><span class=\"title\">" + escape(title)
+                + "</span><span class=\"subtitle\">" + escape(subtitle) + "</span></div>"
+                + "<div class=\"player\"><div class=\"equip left\">" + equipment + "</div><div class=\"figure\">" + skin
+                + "</div><div class=\"offhand\">" + equipSlot(itemAt(normalized, 40), "副手") + "</div></div>"
+                + "<div class=\"grid storage\">" + storage + "</div><div class=\"grid hotbar\">" + hotbar + "</div>"
+                + "<div class=\"box-summary\">" + escape(summary) + "</div><div class=\"inventory-footer\">瑶光天工 · 背包预览 · 快捷栏 1–9</div></div>");
+    }
+
+    private String markedSlot(ItemView item, int index, List<ContainerView> boxes) {
+        String marker = "";
+        for (int box = 0; box < boxes.size(); box++) {
+            if (slotLabel(index).equals(boxes.get(box).sourceSlot())) {
+                marker = "<span class=\"box-index\">" + (box + 1) + "</span>";
+                break;
+            }
+        }
+        return "<div class=\"numbered-slot\">" + slot(item, 1) + marker + "</div>";
     }
 
     private static final int ARMOR_OFFSET = STORAGE_SLOTS + HOTBAR_SLOTS;
@@ -219,7 +238,8 @@ public class ItemCardRenderer {
         String meta = sourceSlot == null || sourceSlot.isBlank()
                 || sourceSlot.equals(title) || sourceSlot.equals(label)
                 ? "" : "<span class=\"section-meta\">" + escape(sourceSlot) + "</span>";
-        return "<div class=\"section container\"><div class=\"section-label\">" + title
+        return "<div class=\"section container\" style=\"background-image:linear-gradient(180deg,rgba(8,11,16,.18),rgba(8,11,16,.66)),url('"
+                + background(CONTAINER_BACKGROUNDS, label) + "')\"><div class=\"section-label\">" + title
                 + (name.isEmpty() ? "" : " · " + escape(name)) + meta
                 + "</div><div class=\"grid\">" + grid + "</div>" + nested + "</div>";
     }
@@ -286,6 +306,9 @@ public class ItemCardRenderer {
         if (!item.iconDataUri().isBlank()) {
             return "<img class=\"icon\" style=\"width:" + size + "px;height:" + size + "px\" src=\""
                     + item.iconDataUri() + "\" alt=\"\">";
+        }
+        if ("shield".equals(item.shortId())) {
+            return "<svg class=\"icon\" width=\"" + size + "\" height=\"" + size + "\" viewBox=\"0 0 32 40\" aria-label=\"盾牌\"><path d=\"M3 2h26v25L16 38 3 27z\" fill=\"#adada4\" stroke=\"#42413c\" stroke-width=\"2\"/><path d=\"M7 6h18v19l-9 8-9-8z\" fill=\"#806244\"/><path d=\"M11 6v22m10-22v22\" stroke=\"#5d452e\" stroke-width=\"2\"/></svg>";
         }
         // 服务端没上报（后台预览），或该物品在资源包里没命中：用内置原版纹理。
         var fallbackIcon = builtin.icon(item.itemId(), BuiltinTextures.defaultLeatherColor(item.itemId()));
@@ -367,6 +390,32 @@ public class ItemCardRenderer {
                 .name.epic{color:#d2a8ff}.name.legendary{color:#ffa657}
                 .lore{font-size:13px;color:#a6a6b8;line-height:1.5}
                 .ench{font-size:13px;color:#b392f0}
+
+                #inventory-card.inventory-main{position:relative;width:710px;height:714px;padding:0;border-radius:8px;overflow:hidden;background-size:cover;color:#eae2d0}
+                .inventory-main .head{position:absolute;top:8px;left:26px;max-width:658px;margin:0;padding:6px 10px;border-radius:6px;background:rgba(10,12,16,.72);white-space:nowrap;overflow:hidden}
+                .inventory-main .title{font-size:16px;margin:0;color:#d6b266}.inventory-main .subtitle{font-size:11px;color:#b9bdc5}
+                .inventory-main .player{position:absolute;left:26px;top:62px;width:658px;height:298px;margin:0;padding:0;border:0;background:none;display:block}
+                .inventory-main .equip.left{position:absolute;inset:0;display:block}
+                .inventory-main .equip .equip-slot{position:absolute;left:0;top:0}.inventory-main .equip .equip-slot:nth-child(2){top:144px}
+                .inventory-main .equip .equip-slot:nth-child(3){left:606px}.inventory-main .equip .equip-slot:nth-child(4){left:606px;top:144px}
+                .inventory-main .figure{position:absolute;left:80px;top:-20px;width:492px;height:270px;border:1px solid rgba(126,134,146,.35);border-radius:8px;background:rgba(14,17,22,.28);align-items:center}
+                .inventory-main .skin{width:100%;height:100%;object-fit:contain}.inventory-main .skin-empty{width:auto;height:auto;padding:20px;background:none;border:0;color:#969ea8;font-size:13px}
+                .inventory-main .offhand{position:absolute;left:304px;top:182px}
+                .inventory-main .equip-slot{width:52px;height:52px;border-radius:6px;background:rgba(14,17,22,.66);border:1px solid rgba(126,134,146,.47);box-shadow:none}
+                .inventory-main .equip-slot .icon{max-width:44px;max-height:44px}
+                .inventory-main .grid{position:absolute;left:38px;grid-template-columns:repeat(9,65px);gap:6px}
+                .inventory-main .storage{top:338px}.inventory-main .hotbar{top:582px;margin:0}
+                .inventory-main .cell,.inventory-main .slot{width:65px;height:65px}.inventory-main .cell{gap:0}
+                .inventory-main .slot,.inventory-containers .slot{border-radius:6px;background:rgba(14,17,22,.66);border:1px solid rgba(126,134,146,.47);box-shadow:none}
+                .inventory-main .label,.inventory-containers .label{display:none}.numbered-slot,.hotbar-cell{position:relative}.hotkey{position:absolute;z-index:2;top:3px;left:5px;color:#969ea8;font-size:11px}
+                .box-index{position:absolute;top:2px;right:3px;padding:1px 5px;border-radius:5px;background:#d6b266;color:#101318;font-size:13px;font-weight:700}
+                .inventory-main .box-summary{position:absolute;top:660px;left:38px;right:38px;font-size:12px;color:#eae2d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+                .inventory-footer{position:absolute;top:689px;left:38px;font-size:11px;color:#969ea8}
+                #inventory-card.inventory-containers{width:708px;padding:0;background:transparent;border-radius:8px}
+                .inventory-containers .section.container{position:relative;width:708px;height:349px;margin:0;padding:0;border:0;border-radius:8px;background-size:cover;overflow:hidden}
+                .inventory-containers .section-label{position:absolute;left:22px;top:10px;max-width:660px;padding:7px 12px;font-size:14px;color:#eae2d0;background:rgba(10,12,16,.6);border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+                .inventory-containers .grid{position:absolute;left:32px;top:56px;grid-template-columns:repeat(9,67px);gap:5px}
+                .inventory-containers .cell,.inventory-containers .slot{width:67px;height:67px}
                 </style></head><body>
                 """ + body + """
                 </body></html>

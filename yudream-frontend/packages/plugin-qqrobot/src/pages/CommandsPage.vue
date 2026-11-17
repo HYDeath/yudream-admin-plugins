@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import {
+  YdAlert,
+  YdSelect,
+  YdResponsiveTable,
   YdButton,
   YdDrawer,
   YdInput,
@@ -19,6 +22,8 @@ const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
 const loading = ref(true)
 const saving = ref(false)
+const loaded = ref(false)
+const loadError = ref('')
 const draft = ref<CommandSettings>(emptyCommandSettings())
 const triggerDraft = ref('')
 const prefixDraft = ref('')
@@ -50,11 +55,15 @@ const visibleCommands = computed(() => {
 
 async function load() {
   loading.value = true
+  loaded.value = false
+  loadError.value = ''
   try {
     draft.value = await api.commandSettings()
+    loaded.value = true
+    editorOpen.value = false
   }
   catch (error) {
-    toast.error(String((error as Error)?.message ?? '加载指令设置失败'))
+    loadError.value = String((error as Error)?.message ?? '加载指令设置失败')
   }
   finally {
     loading.value = false
@@ -62,6 +71,7 @@ async function load() {
 }
 
 async function save() {
+  if (!loaded.value || loading.value || saving.value) return
   saving.value = true
   try {
     draft.value = await api.saveCommandSettings(draft.value)
@@ -119,7 +129,7 @@ function removePrefix(prefix: string) {
 
 async function simulate() {
   const text = simulateText.value.trim()
-  if (!text)
+  if (!text || !loaded.value || simulating.value)
     return
   simulating.value = true
   try {
@@ -139,8 +149,11 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="指令设置" description="QQ 群聊、私聊与游戏内共用的触发词；不要求斜杠，也可自定义前缀与别名">
+      <YdButton variant="outline" :disabled="loading || saving" @click="load">重新加载</YdButton>
+      <YdButton :loading="saving" :disabled="!loaded || loading" @click="save">保存指令</YdButton>
     </YdPageHeader>
     <div class="qqrobot-body">
+      <YdAlert v-if="loadError" variant="destructive" title="指令加载失败" :description="loadError" />
       <YdLoadingOverlay :loading="loading">
         <section class="qqrobot-doc-section">
           <header class="qqrobot-cmd-section-head">
@@ -168,7 +181,7 @@ onMounted(load)
             <div class="qqrobot-tags">
               <span v-for="prefix in draft.extraPrefixes" :key="prefix" class="qqrobot-chip ghost">
                 {{ prefix }}
-                <button type="button" @click="removePrefix(prefix)">×</button>
+                <YdButton size="sm" variant="ghost" :aria-label="`移除前缀 ${prefix}`" @click="removePrefix(prefix)">移除</YdButton>
               </span>
               <span v-if="!draft.extraPrefixes.length" class="qqrobot-muted">暂无额外前缀，仅支持无前缀与 /</span>
             </div>
@@ -185,15 +198,7 @@ onMounted(load)
           <div class="qqrobot-simulate">
             <div class="qqrobot-simulate-input">
               <YdInput v-model="simulateText" placeholder="输入玩家可能发送的一句话，例如「绑定 Steve」" @keyup.enter="simulate" />
-              <div class="qqrobot-segmented">
-                <button
-                  v-for="scope in (['private', 'group', 'game'] as const)"
-                  :key="scope"
-                  type="button"
-                  :class="{ active: simulateScope === scope }"
-                  @click="simulateScope = scope"
-                >{{ scopeLabels[scope] }}</button>
-              </div>
+              <YdSelect v-model="simulateScope" aria-label="模拟消息范围" :options="Object.entries(scopeLabels).map(([value, label]) => ({ value, label }))" />
               <YdButton :loading="simulating" @click="simulate">模拟</YdButton>
             </div>
             <div v-if="simulateResult" class="qqrobot-simulate-result" :class="{ miss: !simulateResult.matched }">
@@ -222,49 +227,16 @@ onMounted(load)
             </div>
           </header>
 
-          <div class="qqrobot-cmd-table">
-            <div class="qqrobot-cmd-row qqrobot-cmd-head">
-              <span>指令</span>
-              <span>触发词</span>
-              <span>生效范围</span>
-              <span>状态</span>
-            </div>
-            <button
-              v-for="command in visibleCommands"
-              :key="command.action"
-              type="button"
-              class="qqrobot-cmd-row"
-              :class="{ off: !command.enabled }"
-              @click="edit(command)"
-            >
-              <span class="qqrobot-cmd-name">
-                <strong>{{ command.label }}</strong>
-                <code>{{ command.action }}</code>
-              </span>
-              <span class="qqrobot-tags qqrobot-cmd-triggers" data-label="触发词">
-                <span v-for="trigger in command.triggers.slice(0, 4)" :key="trigger" class="qqrobot-chip">{{ trigger }}</span>
-                <span v-if="command.triggers.length > 4" class="qqrobot-chip ghost">+{{ command.triggers.length - 4 }}</span>
-                <span v-if="!command.triggers.length" class="qqrobot-chip off">未配置</span>
-              </span>
-              <span class="qqrobot-tags qqrobot-cmd-scopes" data-label="生效范围">
-                <span v-for="scope in command.scopes" :key="scope" class="qqrobot-chip ghost">{{ scopeLabels[scope] ?? scope }}</span>
-                <span v-if="!command.scopes.length" class="qqrobot-chip off">无</span>
-              </span>
-              <span class="qqrobot-cmd-state" data-label="状态">
-                <span :class="['qqrobot-chip', command.enabled ? 'on' : 'off']">{{ command.enabled ? '启用' : '停用' }}</span>
-              </span>
-            </button>
-            <div v-if="!visibleCommands.length" class="qqrobot-cmd-empty qqrobot-muted">没有匹配的指令。</div>
-          </div>
+          <YdResponsiveTable :columns="[{ accessorKey: 'label', header: '指令' }, { accessorKey: 'triggers', header: '触发词' }, { accessorKey: 'scopes', header: '生效范围' }, { id: 'actions', header: '管理' }]" :data="visibleCommands" row-key="action" :loading="loading" empty-text="没有匹配的指令。">
+            <template #cell-label="{ row }"><strong>{{ row.original.label }}</strong><small class="qqrobot-muted"> {{ row.original.action }}</small></template>
+            <template #cell-triggers="{ row }">{{ row.original.triggers.join('、') || '未配置' }}</template>
+            <template #cell-scopes="{ row }">{{ row.original.scopes.map((scope: string) => scopeLabels[scope]).join('、') || '无' }}</template>
+            <template #cell-actions="{ row }"><YdButton variant="outline" size="sm" @click="edit(row.original)">{{ row.original.enabled ? '编辑' : '编辑（停用）' }}</YdButton></template>
+            <template #card="{ row }"><div class="qqrobot-binding-card"><strong>{{ row.label }}</strong><span class="qqrobot-muted">{{ row.triggers.join('、') || '未配置触发词' }}</span><span class="qqrobot-muted">{{ row.scopes.map((scope: string) => scopeLabels[scope]).join('、') }}</span><YdButton variant="outline" size="sm" @click="edit(row)">编辑指令</YdButton></div></template>
+          </YdResponsiveTable>
         </section>
       </YdLoadingOverlay>
-      <div class="qqrobot-save-bar">
-        <span class="qqrobot-muted">{{ enabledCount }}/{{ draft.commands.length }} 个指令启用中</span>
-        <div class="qqrobot-save-actions">
-          <YdButton variant="outline" :disabled="saving || loading" @click="load">重置</YdButton>
-          <YdButton :loading="saving" @click="save">保存指令</YdButton>
-        </div>
-      </div>
+
     </div>
 
     <YdDrawer v-model="editorOpen" :title="editing ? `编辑指令：${editing.label}` : '编辑指令'">
@@ -279,7 +251,7 @@ onMounted(load)
           <div class="qqrobot-tags">
             <span v-for="trigger in editing.triggers" :key="trigger" class="qqrobot-chip on">
               {{ trigger }}
-              <button type="button" @click="removeTrigger(editing, trigger)">×</button>
+              <YdButton size="sm" variant="ghost" :aria-label="`移除触发词 ${trigger}`" @click="removeTrigger(editing, trigger)">移除</YdButton>
             </span>
             <span v-if="!editing.triggers.length" class="qqrobot-chip off">未配置，指令不可用</span>
           </div>

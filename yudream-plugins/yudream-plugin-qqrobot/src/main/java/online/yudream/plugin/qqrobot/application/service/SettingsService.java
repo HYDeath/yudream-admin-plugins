@@ -43,9 +43,16 @@ public class SettingsService {
         if (groupId == null || groupId.isBlank()) {
             throw QqRobotException.badRequest("群号不能为空");
         }
+        return configuredGroup(groupId).orElseGet(() -> GroupSettings.defaults(groupId));
+    }
+
+    /** 自动解绑等清理操作只接受管理员明确配置的群，不能继承未配置群的默认启用值。 */
+    public java.util.Optional<GroupSettings> configuredGroup(String groupId) {
+        if (groupId == null || groupId.isBlank()) {
+            return java.util.Optional.empty();
+        }
         return documents.findById(COLLECTION, GROUP_PREFIX + groupId)
-                .map(GroupSettings::fromDocument)
-                .orElseGet(() -> GroupSettings.defaults(groupId));
+                .map(GroupSettings::fromDocument);
     }
 
     public QqBotSettings botSettings() {

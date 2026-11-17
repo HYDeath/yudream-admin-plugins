@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  YdAlert,
   YdButton,
   YdDrawer,
   YdEmpty,
@@ -30,6 +31,7 @@ const size = ref(8)
 const total = ref(0)
 const keyword = ref('')
 const loading = ref(false)
+const loadError = ref('')
 const editorOpen = ref(false)
 const saving = ref(false)
 const draft = ref<Partial<ResourceCard>>(emptyCard())
@@ -50,13 +52,14 @@ function emptyCard(): Partial<ResourceCard> {
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const result = await api.cards(page.value, size.value, keyword.value)
     cards.value = result.records
     total.value = result.total
   }
   catch (error) {
-    toast.error(String((error as Error)?.message ?? '加载资源失败'))
+    loadError.value = String((error as Error)?.message ?? '加载资源失败')
   }
   finally {
     loading.value = false
@@ -74,6 +77,7 @@ function openEdit(card: ResourceCard) {
 }
 
 async function save() {
+  if (saving.value) return
   if (!String(draft.value.title ?? '').trim()) {
     toast.error('请填写资源标题')
     return
@@ -170,8 +174,9 @@ onMounted(() => {
         </div>
         <span class="qqrobot-muted">{{ renderStatus.hint }}</span>
       </div>
+      <YdAlert v-if="loadError" variant="destructive" title="资源加载失败" :description="loadError" />
       <YdLoadingOverlay :loading="loading">
-        <div v-if="!cards.length" class="qqrobot-doc-section qqrobot-market-blank">
+        <div v-if="!cards.length && !loadError && !loading" class="qqrobot-doc-section qqrobot-market-blank">
           <YdEmpty description="还没有资源。新增后可自动生成卡片图，群聊里直接发图即可。">
             <template #image>
               <div class="qqrobot-market-blank-icon"><span class="i-ri:store-3-line" /></div>

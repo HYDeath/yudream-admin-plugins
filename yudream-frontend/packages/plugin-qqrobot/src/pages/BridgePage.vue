@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {
+  YdAlert,
+  useYdModal,
   YdButton,
   YdCopyButton,
   YdEmpty,
@@ -16,6 +18,11 @@ import type { BridgeServer, BridgeState, QqRobotNotice } from '../types'
 const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
+const modal = useYdModal()
+const loadError = ref('')
+const loaded = ref(false)
+const rotating = ref(false)
+const kicking = ref('')
 const loading = ref(true)
 const state = ref<BridgeState>({ servers: [], token: '', pendingBindings: 0 })
 const kickMessage = ref('请先绑定社交账号')
@@ -37,12 +44,15 @@ const dedupedNotices = computed(() => {
 
 async function load() {
   loading.value = true
+  loaded.value = false
+  loadError.value = ''
   try {
     state.value = await api.bridge()
+    loaded.value = true
     notices.value = (await api.notices()).notices ?? []
   }
   catch (error) {
-    toast.error(String((error as Error)?.message ?? '加载桥接状态失败'))
+    loadError.value = String((error as Error)?.message ?? '加载桥接状态失败')
   }
   finally {
     loading.value = false
@@ -50,6 +60,9 @@ async function load() {
 }
 
 async function rotate() {
+  if (!loaded.value || rotating.value) return
+  if (!await modal.confirm({ title: '轮换桥接令牌', content: '轮换后，服务端需要更新令牌才能重新连接。是否继续？', confirmButtonText: '轮换令牌' })) return
+  rotating.value = true
   try {
     const result = await api.rotateToken()
     state.value = { ...state.value, token: result.token }
@@ -58,22 +71,25 @@ async function rotate() {
   }
   catch (error) {
     toast.error(String((error as Error)?.message ?? '轮换失败'))
-  }
+  } finally { rotating.value = false }
 }
 
 async function kick(server: BridgeServer) {
+  if (kicking.value) return
   const player = (kickTarget.value[server.sessionId] ?? '').trim()
   if (!player) {
     toast.error('请输入玩家名')
     return
   }
+  if (!await modal.confirm({ title: '踢出玩家', content: `从 ${server.serverName} 踢出 ${player}？`, confirmButtonText: '踢出玩家' })) return
+  kicking.value = server.sessionId
   try {
     const result = await api.kick(server.serverId, player, kickMessage.value)
     toast[result.sent ? 'success' : 'error'](result.sent ? '已发送踢出指令' : '服务器未连接')
   }
   catch (error) {
     toast.error(String((error as Error)?.message ?? '发送失败'))
-  }
+  } finally { kicking.value = '' }
 }
 
 function relative(value: string) {
@@ -98,12 +114,13 @@ onMounted(load)
         </div>
         <div class="qqrobot-toolbar-actions">
           <YdButton variant="outline" @click="load">刷新</YdButton>
-          <YdButton variant="outline" class="qqrobot-danger" @click="rotate">轮换令牌</YdButton>
+          <YdButton variant="outline" class="qqrobot-danger" :loading="rotating" :disabled="!loaded || loading" @click="rotate">轮换令牌</YdButton>
         </div>
       </div>
+      <YdAlert v-if="loadError" variant="destructive" title="桥接状态加载失败" :description="loadError" />
       <YdLoadingOverlay :loading="loading">
         <div v-if="dedupedNotices.length" class="qqrobot-notice">
-          <button type="button" class="qqrobot-notice-head" @click="noticesOpen = !noticesOpen">
+          <YdButton variant="ghost" class="qqrobot-notice-head" @click="noticesOpen = !noticesOpen">
             <span class="qqrobot-notice-dot" />
             <strong>{{ dedupedNotices[0].title }}</strong>
             <span class="qqrobot-muted">{{ dedupedNotices[0].message }}</span>
@@ -111,7 +128,7 @@ onMounted(load)
               {{ dedupedNotices.length > 1 ? `共 ${dedupedNotices.length} 条` : '' }}
               {{ noticesOpen ? '收起' : '查看' }}
             </span>
-          </button>
+          </YdButton>
           <div v-if="noticesOpen" class="qqrobot-notice-list">
             <div v-for="notice in dedupedNotices" :key="notice.id" class="qqrobot-notice-item">
               <strong>{{ notice.title }}</strong>
@@ -160,7 +177,7 @@ onMounted(load)
               <YdInput :model-value="kickTarget[server.sessionId] ?? ''" placeholder="玩家名"
                 @update:model-value="kickTarget = { ...kickTarget, [server.sessionId]: String($event ?? '') }" />
               <YdInput v-model="kickMessage" placeholder="踢出原因" />
-              <YdButton variant="outline" size="sm" @click="kick(server)">踢出</YdButton>
+              <YdButton variant="outline" size="sm" :loading="kicking === server.sessionId" :disabled="Boolean(kicking)" @click="kick(server)">踢出</YdButton>
             </div>
           </article>
         </div>

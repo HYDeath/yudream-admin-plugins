@@ -43,6 +43,8 @@ public class BridgeHub {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, BridgeSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
+    private final Map<String, ContainerRequest> containerRequests = new ConcurrentHashMap<>();
+    private record ContainerRequest(String action, int index) { }
     private final SettingsService settings;
     private final BindCodeService codes;
     private final BindingService bindings;
@@ -51,6 +53,7 @@ public class BridgeHub {
     private final PluginSecretStore secrets;
     private final java.util.function.Consumer<String> notice;
     private volatile String token;
+    private final online.yudream.plugin.qqrobot.application.service.AvatarService avatars = new online.yudream.plugin.qqrobot.application.service.AvatarService(true);
 
     public BridgeHub(SettingsService settings, BindCodeService codes, BindingService bindings,
                      GroupService groups, ItemCardRenderer items, PluginSecretStore secrets,
@@ -184,10 +187,16 @@ public class BridgeHub {
     /** 服务端刚接入时补一次指令同步，避免它停在 config.yml 的旧触发词上。 */
     private void syncCommands(BridgeSession session) {
         var commands = settings.commandSettings().commands().stream()
-                .filter(command -> command.enabled() && command.supports("game"))
-                .map(command -> Map.of("action", command.action(), "triggers", command.triggers()))
+                .filter(command -> command.enabled())
+                .map(command -> Map.of("action", command.action(), "triggers", command.triggers(), "game", command.supports("game")))
                 .toList();
-        write(session, frame("commands.sync", Map.of("commands", commands, "chatTriggerEnabled", true)));
+        write(session, frame("commands.sync", Map.of("commands", commands, "chatTriggerEnabled", true,
+                "bindingEnforced", settings.bindSettings().forcedServers().contains(session.serverId()),
+                "kickMessage", settings.bindSettings().unboundKickMessage())));
+    }
+
+    public void syncSettings() {
+        sessions.values().forEach(this::syncCommands);
     }
 
     public void close(String sessionId) {
@@ -321,7 +330,7 @@ public class BridgeHub {
             JsonNode value = entry.getValue();
             Object plain = value.isNumber() ? value.numberValue()
                     : value.isBoolean() ? value.booleanValue()
-                    : value.isTextual() ? value.textValue() : value.toString();
+                    : value.isTextual() ? value.textValue() : mapper.convertValue(value, Object.class);
             session.state(entry.getKey(), plain);
         });
     }
@@ -347,20 +356,20 @@ public class BridgeHub {
         String player = text(data, "player");
         String socialId = text(data, "socialId");
         String socialName = text(data, "socialName");
-        Optional<BindCodeService.PendingCode> pending = codes.take(code);
+        Optional<BindCodeService.PendingCode> pending = codes.takeForPlayer(code, player, session.serverId());
         if (pending.isEmpty()) {
             write(session, frame("bind.result", Map.of("requestId", nullToEmpty(requestId), "success", false,
-                    "message", "绑定码无效或已过期")));
+                    "player", player, "message", "绑定码无效、已过期或与玩家不匹配")));
             return;
         }
         BindCodeService.PendingCode value = pending.get();
-        if (!value.playerName().equalsIgnoreCase(player) || !value.serverId().equals(session.serverId())) {
+        if (value.socialId() == null || value.socialId().isBlank()) {
             write(session, frame("bind.result", Map.of("requestId", nullToEmpty(requestId), "success", false,
-                    "message", "绑定码与玩家或服务器不匹配")));
+                    "player", player, "message", "请先在 QQ 账号服务群发送「绑定 游戏ID」申请绑定码")));
             return;
         }
         try {
-            var record = bindings.bind(socialId, socialName, player, session.serverId(),
+            var record = bindings.bind(value.socialId(), value.socialName(), player, session.serverId(),
                     value.groupId(), value.connectionId());
             write(session, frame("bind.result", Map.of("requestId", nullToEmpty(requestId), "success", true,
                     "player", record.playerName(), "socialId", record.socialId(),
@@ -447,6 +456,7 @@ public class BridgeHub {
         String title = text(data, "title");
         String subtitle = text(data, "subtitle");
         String skin = text(data, "skin");
+        if (!skin.isBlank() && !skin.startsWith("data:image/")) skin = avatars.views(skin);
         List<ItemView> items = new ArrayList<>();
         JsonNode array = data.path("items");
         if (array.isArray()) {
@@ -464,9 +474,25 @@ public class BridgeHub {
                         text(node, "slot"), contents).normalized());
             }
         }
+        String frameId = requestId.isBlank() ? text(data, "requestId") : requestId;
+        ContainerRequest request = containerRequests.get(frameId);
+        if (request != null && "shulker".equals(request.action()) && request.index() == 0) {
+            List<ContainerView> boxes = containers.stream().filter(box -> "shulker".equals(box.kind())).toList();
+            CompletableFuture<JsonNode> waiting = pending.get(frameId);
+            if (waiting != null) {
+                ObjectNode result = mapper.createObjectNode();
+                result.put("ok", !boxes.isEmpty());
+                result.put("message", "该玩家背包中未发现潜影盒。");
+                var options = result.putArray("choices");
+                boxes.forEach(box -> options.add(box.label() + " · " + box.sourceSlot()));
+                waiting.complete(result);
+            }
+            return;
+        }
         this.items.inventory(title, items, skin, subtitle, containers).whenComplete((image, error) -> {
             if (error != null || image == null || image.content() == null) {
                 write(session, error(requestId, "物品渲染失败"));
+                handleInventoryError(frameId, mapper.createObjectNode().put("message", "物品渲染失败，请检查消息渲染能力。"));
                 return;
             }
             String frameRequestId = requestId.isBlank() ? text(data, "requestId") : requestId;
@@ -507,7 +533,9 @@ public class BridgeHub {
         if (type.isBlank() || player == null || player.isBlank()) {
             return Optional.empty();
         }
-        for (BridgeSession session : sessions.values()) {
+        for (BridgeSession session : sessions.values().stream()
+                .sorted(java.util.Comparator.comparing(session -> !hasPlayer(session, player))).toList()) {
+            if (!session.open()) continue;
             Map<String, Object> data = new java.util.LinkedHashMap<>();
             data.put("player", player);
             data.put("type", type);
@@ -515,10 +543,25 @@ public class BridgeHub {
             String requestId = java.util.UUID.randomUUID().toString();
             CompletableFuture<JsonNode> future = new CompletableFuture<>();
             pending.put(requestId, future);
+            containerRequests.put(requestId, new ContainerRequest(action, index));
+            future.orTimeout(25, java.util.concurrent.TimeUnit.SECONDS).whenComplete((value, error) -> {
+                pending.remove(requestId, future);
+                containerRequests.remove(requestId);
+            });
             write(session, frame("inventory.request", withRequestId(data, requestId)));
             return Optional.of(new PendingRender(requestId, session.serverName(), future));
         }
         return Optional.empty();
+    }
+
+    private static boolean hasPlayer(BridgeSession session, String player) {
+        Object online = session.state("onlinePlayers");
+        if (!(online instanceof Iterable<?> names)) return false;
+        for (Object name : names) {
+            if (player.equalsIgnoreCase(String.valueOf(name))) return true;
+            if (name instanceof Map<?, ?> row && player.equalsIgnoreCase(String.valueOf(row.get("name")))) return true;
+        }
+        return false;
     }
 
     public Optional<PendingRender> requestContainer(String player, String action) {

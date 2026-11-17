@@ -89,6 +89,10 @@ export interface GroupSettings {
   quitMessage: string
   cardFormat: string
   cardMaxLength: number
+  queryEnabled: boolean
+  passwordEnabled: boolean
+  welcomeEnabled: boolean
+  welcomeMessage: string
 }
 
 export interface CommandBinding {
@@ -311,10 +315,15 @@ export function emptyGroup(): GroupSettings {
     quitMessage: '&e#name &7离开了我们，后会有期。',
     cardFormat: '&7[&a#group&7] &f#name',
     cardMaxLength: 16,
+    queryEnabled: true,
+    passwordEnabled: true,
+    welcomeEnabled: false,
+    welcomeMessage: '欢迎 #mention 加入 #group！',
   }
 }
 
 const commandDefaults = (): CommandBinding[] => [
+  { action: 'password', label: '修改密码', triggers: ['修改密码', '重置密码', '改密'], enabled: true, scopes: ['private', 'group'], replyHint: '请前往官网登录页选择「忘记密码」，验证邮箱后修改密码。不要在群聊发送密码。' },
   { action: 'bind', label: '绑定', triggers: ['绑定', 'bind'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '正在为你生成绑定码…' },
   { action: 'unbind', label: '解绑', triggers: ['解绑', 'unbind'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '已处理你的解绑请求。' },
   { action: 'inventory', label: '背包', triggers: ['背包', 'bag', 'inventory'], enabled: true, scopes: ['private', 'group', 'game'], replyHint: '正在渲染背包，请稍候…' },

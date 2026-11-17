@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import {
+  YdAlert,
+  YdSettingsLayout,
+  YdSettingsSection,
   YdButton,
   YdInput,
   YdLoadingOverlay,
@@ -18,6 +21,8 @@ const api = createQqRobotApi(props.sdk)
 const toast = useYdToast()
 const loading = ref(true)
 const saving = ref(false)
+const loaded = ref(false)
+const loadError = ref('')
 const state = ref<BotConnectionState | null>(null)
 const integrations = ref<QqIntegrationSettings>({
   registrationReviewEnabled: true,
@@ -36,10 +41,10 @@ const draft = ref({
 })
 
 const anchors = [
-  { id: 'connections', label: '消息连接' },
-  { id: 'replies', label: '欢迎语' },
-  { id: 'binding', label: '接入流程' },
-  { id: 'integrations', label: '插件联动' },
+  { value: 'connections', label: '消息连接' },
+  { value: 'replies', label: '欢迎语' },
+  { value: 'binding', label: '接入流程' },
+  { value: 'integrations', label: '插件联动' },
 ]
 
 const connections = computed(() => state.value?.connections ?? [])
@@ -48,11 +53,13 @@ const stateLabel = computed(() => {
   if (!state.value) return '加载中'
   if (state.value.state === 'unavailable') return 'QQ 消息平台未启用'
   if (!connections.value.length) return '尚未配置连接'
-  return `${connections.value.length} 个连接在线`
+  return `${connections.value.length} 个已启用连接`
 })
 
 async function load() {
   loading.value = true
+  loaded.value = false
+  loadError.value = ''
   try {
     state.value = await api.botConnections()
     integrations.value = await api.integrationSettings()
@@ -64,14 +71,17 @@ async function load() {
       friendAddMessage: state.value.friendAddMessage,
       groupAddMessage: state.value.groupAddMessage,
     }
+    loaded.value = true
   } catch (error) {
-    toast.error(String((error as Error)?.message ?? '机器人接入状态加载失败'))
+    loadError.value = String((error as Error)?.message ?? '机器人接入状态加载失败')
+    toast.error(loadError.value)
   } finally {
     loading.value = false
   }
 }
 
 async function save() {
+  if (!loaded.value || loading.value || saving.value) return
   saving.value = true
   try {
     // 凭证由平台「QQ 消息平台」管理：这里保留服务端已有值，只合并回复策略，
@@ -101,10 +111,6 @@ async function save() {
   }
 }
 
-function jump(id: string) {
-  activeAnchor.value = id
-  document.getElementById(`qqrobot-anchor-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
 
 function protocolLabel(item: { official?: boolean, protocol?: string, platform?: string }) {
   if (item.official || item.protocol === 'official') return '官方 QQ'
@@ -118,37 +124,13 @@ onMounted(load)
 <template>
   <div class="qqrobot-page">
     <YdPageHeader title="机器人设置" description="登录连接由平台「QQ 消息平台」统一管理，这里只配置回复策略">
+      <YdButton variant="outline" :disabled="loading || saving" @click="load">重新加载</YdButton>
+      <YdButton :loading="saving" :disabled="!loaded || loading" @click="save">保存设置</YdButton>
     </YdPageHeader>
-    <div class="qqrobot-body">
-      <YdLoadingOverlay :loading="loading">
-        <div class="qqrobot-doc">
-          <nav class="qqrobot-doc-nav">
-            <button
-              v-for="item in anchors"
-              :key="item.id"
-              type="button"
-              class="qqrobot-doc-link"
-              :class="{ on: activeAnchor === item.id }"
-              @click="jump(item.id)"
-            >{{ item.label }}</button>
-          </nav>
-
-          <div class="qqrobot-doc-body">
-            <div class="qqrobot-status-strip" :class="{ on: enabled }">
-              <span class="qqrobot-status-dot" />
-              <strong>{{ stateLabel }}</strong>
-              <span class="qqrobot-muted">{{ state?.capabilityName ?? 'QQ 消息平台' }}</span>
-              <a v-if="state" class="qqrobot-status-link" :href="state.managePath">管理连接</a>
-            </div>
-
-            <section id="qqrobot-anchor-connections" class="qqrobot-doc-section">
-              <header>
-                <h3>消息连接</h3>
-                <p>
-                  QQ 号登录、AppID / AppSecret、Webhook 与沙盒都配置在平台的「QQ 消息平台」里，
-                  本插件不再重复保存同一套凭证，避免两边互相覆盖。
-                </p>
-              </header>
+    <YdAlert v-if="loadError" variant="destructive" title="设置加载失败" :description="loadError" class="qqrobot-load-error" />
+    <YdLoadingOverlay :loading="loading">
+      <YdSettingsLayout v-model="activeAnchor" :list="anchors" surface width-class="max-w-5xl">
+<template #connections><YdSettingsSection title="消息连接" description="QQ 号登录、AppID / AppSecret、Webhook 与沙盒都配置在平台的「QQ 消息平台」里， 本插件不再重复保存同一套凭证，避免两边互相覆盖。">
 
               <div v-if="state?.state === 'unavailable'" class="qqrobot-blocked">
                 <strong>QQ 消息平台能力未启用</strong>
@@ -180,13 +162,8 @@ onMounted(load)
                   <YdSwitch v-model="draft.replyEnabled" />
                 </label>
               </div>
-            </section>
-
-            <section id="qqrobot-anchor-replies" class="qqrobot-doc-section">
-              <header>
-                <h3>欢迎语</h3>
-                <p>好友添加与机器人入群时自动发送一次；留空则不回复</p>
-              </header>
+            </YdSettingsSection></template>
+<template #replies><YdSettingsSection title="欢迎语" description="好友添加与机器人入群时自动发送一次；留空则不回复">
               <div class="qqrobot-switch-list">
                 <label class="qqrobot-switch-row">
                   <span><strong>好友添加自动回复</strong><small>对方添加机器人好友后立刻私聊欢迎语</small></span>
@@ -207,13 +184,8 @@ onMounted(load)
                   <YdTextarea v-model="draft.groupAddMessage" :rows="3" />
                 </label>
               </div>
-            </section>
-
-            <section id="qqrobot-anchor-binding" class="qqrobot-doc-section">
-              <header>
-                <h3>接入流程</h3>
-                <p>从登录 QQ 到玩家完成绑定，一共三步</p>
-              </header>
+            </YdSettingsSection></template>
+<template #binding><YdSettingsSection title="接入流程" description="从登录 QQ 到玩家完成绑定，一共三步">
               <ol class="qqrobot-steps">
                 <li>
                   <strong>在平台创建消息连接</strong>
@@ -232,13 +204,8 @@ onMounted(load)
                   <span>玩家在 QQ 里发「绑定 游戏ID」拿验证码，进服后在聊天栏输入验证码即可完成双向绑定。</span>
                 </li>
               </ol>
-            </section>
-
-            <section id="qqrobot-anchor-integrations" class="qqrobot-doc-section">
-              <header>
-                <h3>插件联动</h3>
-                <p>按需启用注册审核联动；未安装对应插件时不会阻断 QQ 机器人。</p>
-              </header>
+            </YdSettingsSection></template>
+<template #integrations><YdSettingsSection title="插件联动" description="按需启用注册审核联动；未安装对应插件时不会阻断 QQ 机器人。">
               <div class="qqrobot-status-strip" :class="{ on: integrations.providerAvailable }">
                 <span class="qqrobot-status-dot" />
                 <strong>{{ integrations.providerAvailable ? '已检测到注册审核插件' : '未检测到注册审核插件' }}</strong>
@@ -257,17 +224,8 @@ onMounted(load)
                 <span>注册审核入口</span>
                 <YdInput v-model="integrations.registrationUrl" placeholder="/platform/plugins/registration-review" />
               </label>
-            </section>
-          </div>
-        </div>
-      </YdLoadingOverlay>
-      <div class="qqrobot-save-bar">
-        <span class="qqrobot-muted">凭证由「QQ 消息平台」管理，这里保存回复策略</span>
-        <div class="qqrobot-save-actions">
-          <YdButton variant="outline" :disabled="saving || loading" @click="load">刷新状态</YdButton>
-          <YdButton :loading="saving" @click="save">保存设置</YdButton>
-        </div>
-      </div>
-    </div>
+            </YdSettingsSection></template>
+      </YdSettingsLayout>
+    </YdLoadingOverlay>
   </div>
 </template>

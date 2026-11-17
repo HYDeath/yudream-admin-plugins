@@ -11,6 +11,7 @@ import java.util.Optional;
 
 public class BindingService {
     private static final String COLLECTION = "qqrobot-binding";
+    public static final String UNBOUND_ID = "未绑定ID";
 
     private final PluginDocumentStore documents;
     private final SettingsService settings;
@@ -57,9 +58,31 @@ public class BindingService {
 
     /** Remove every game account owned by one social identity, used by member-leave cleanup. */
     public List<BindingRecord> unbindAll(String socialId) {
-        List<BindingRecord> records = bySocial(socialId, 1, 200);
+        List<BindingRecord> records = allBySocial(socialId);
         records.forEach(record -> documents.delete(COLLECTION, record.id()));
         return records;
+    }
+
+    /** 官方成员 OpenID 属于连接和群，不能清理同值但属于另一身份作用域的记录。 */
+    public List<BindingRecord> unbindInGroup(String socialId, String connectionId, String groupId) {
+        if (connectionId == null || connectionId.isBlank() || groupId == null || groupId.isBlank()) {
+            return List.of();
+        }
+        List<BindingRecord> records = allBySocial(socialId).stream()
+                .filter(record -> connectionId.equals(record.connectionId()) && groupId.equals(record.groupId()))
+                .toList();
+        records.forEach(record -> documents.delete(COLLECTION, record.id()));
+        return records;
+    }
+
+    /** 先收集再删除，避免删除前页记录后，后页偏移导致漏掉历史绑定。 */
+    private List<BindingRecord> allBySocial(String socialId) {
+        List<BindingRecord> records = new java.util.ArrayList<>();
+        for (int pageNumber = 1; ; pageNumber++) {
+            List<BindingRecord> batch = bySocial(socialId, pageNumber, 100);
+            records.addAll(batch);
+            if (batch.size() < 100) return records;
+        }
     }
 
     public Optional<BindingRecord> find(String socialId, String playerName) {
@@ -68,9 +91,15 @@ public class BindingService {
     }
 
     public Optional<BindingRecord> findByPlayer(String playerName) {
-        return page(1, 200).stream()
-                .filter(record -> record.playerName().equalsIgnoreCase(playerName))
-                .findFirst();
+        for (int pageNumber = 1; ; pageNumber++) {
+            List<BindingRecord> records = page(pageNumber, 100);
+            Optional<BindingRecord> match = records.stream()
+                    .filter(record -> record.playerName().equalsIgnoreCase(playerName))
+                    .findFirst();
+            if (match.isPresent() || records.size() < 100) {
+                return match;
+            }
+        }
     }
 
     public List<BindingRecord> bySocial(String socialId, int page, int size) {
@@ -94,7 +123,7 @@ public class BindingService {
     public String describe(String socialId) {
         List<BindingRecord> records = bySocial(socialId, 1, 50);
         if (records.isEmpty()) {
-            return "该社交账号尚未绑定任何游戏账号";
+            return UNBOUND_ID;
         }
         return records.stream().map(BindingRecord::playerName).reduce((left, right) -> left + "、" + right).orElse("");
     }

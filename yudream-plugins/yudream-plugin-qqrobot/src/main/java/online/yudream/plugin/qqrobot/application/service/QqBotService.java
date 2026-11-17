@@ -5,9 +5,7 @@ import online.yudream.base.plugin.spi.system.messaging.PluginEvent;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessageContent;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessageRequest;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessagingService;
-import online.yudream.base.plugin.spi.system.command.PluginCommandService;
 import online.yudream.base.plugin.spi.system.user.PluginMessagingIdentity;
-import online.yudream.base.plugin.spi.system.user.PluginUserService;
 import online.yudream.plugin.qqrobot.bridge.BridgeHub;
 import online.yudream.plugin.qqrobot.domain.BindSettings;
 import online.yudream.plugin.qqrobot.domain.CommandSettings;
@@ -53,9 +51,15 @@ public class QqBotService {
     private PluginMessagingService messaging;
     /** 群组策略与群名片同步；单测/旧构造路径可为空。 */
     private GroupService groups;
-    /** 宿主统一命令总线；自己的快捷词未命中时转发到这里。 */
-    private PluginCommandService commandService;
-    private PluginUserService users;
+    private final Map<String, Choice> choices = new java.util.concurrent.ConcurrentHashMap<>();
+    private record Choice(String action, List<String> options, String player, int index, long expiresAt) { }
+
+    private static String choicePrompt(Choice choice) {
+        StringBuilder text = new StringBuilder(choice.player().isBlank()
+                ? "检测到你绑定了多个游戏账号，请选择要查询的账号：" : "请选择要打开的潜影盒：");
+        for (int index = 0; index < choice.options().size(); index++) text.append("\n").append(index + 1).append(". ").append(choice.options().get(index));
+        return text.append("\n").append(choice.options().size() + 1).append(". 取消\n请在 2 分钟内回复序号。").toString();
+    }
 
     public QqBotService(SettingsService settings, BindCodeService codes, NoticeService notices,
                         TemplateService templates) {
@@ -101,11 +105,6 @@ public class QqBotService {
         this.groups = groups;
     }
 
-    public void attachCommandService(PluginCommandService commandService, PluginUserService users) {
-        this.commandService = commandService;
-        this.users = users;
-    }
-
     /**
      * 宿主分发的消息事件入口。
      *
@@ -124,7 +123,11 @@ public class QqBotService {
         }
         String type = event.type() == null ? "" : event.type();
         if (!"message_receive".equals(type) && !"friend_add".equals(type)
-                && !"group_request".equals(type) && !"group_member_decrease".equals(type)) {
+                && !"group_request".equals(type) && !"group_member_increase".equals(type) && !"group_member_decrease".equals(type)) {
+            return;
+        }
+        if ("group_member_increase".equals(type)) {
+            if (groups != null) groups.welcome(event);
             return;
         }
         if ("group_member_decrease".equals(type)) {
@@ -170,12 +173,7 @@ public class QqBotService {
             groups.syncCard(event.connectionId(), channel, event.userId(), currentCard(event), memberData(event),
                     bindings, false);
         }
-        CommandMatcher.Match ownMatch = new CommandMatcher(settings.commandSettings()).match(content, scope);
-        if (ownMatch == null && publishGenericCommand(event, content, identity)) {
-            return;
-        }
-        Result reply = ownMatch == null ? Result.empty()
-                : message(content, event.userId(), scope, platform, channel, identity);
+        Result reply = message(content, event.userId(), scope, platform, channel, identity);
         if (reply == null || (reply.text().isBlank() && !reply.hasImage())) {
             return;
         }
@@ -248,38 +246,6 @@ public class QqBotService {
         if (value != null && !String.valueOf(value).isBlank()) {
             target.putIfAbsent(key, String.valueOf(value));
         }
-    }
-
-    /**
-     * 把其它插件声明的 @PluginCommand 接到官方 QQ 消息入口。
-     * 只发布已注册命令，命令处理器自己的回复仍统一走宿主消息端口。
-     */
-    private boolean publishGenericCommand(PluginEvent event, String content, PluginMessagingIdentity identity) {
-        if (commandService == null || content == null || content.isBlank()) {
-            return false;
-        }
-        String value = content.trim();
-        CommandSettings commandSettings = settings.commandSettings();
-        String prefix = commandSettings.prefixes().stream()
-                .filter(value::startsWith).findFirst().orElse("");
-        if (!prefix.isBlank()) {
-            value = value.substring(prefix.length()).trim();
-        } else if (commandSettings.prefixRequired()) {
-            return false;
-        }
-        if (value.isBlank()) {
-            return false;
-        }
-        String[] parts = value.split("\\s+");
-        String command = parts[0];
-        java.util.List<String> arguments = parts.length <= 1 ? java.util.List.of()
-                : java.util.Arrays.stream(parts).skip(1).toList();
-        Long userId = null;
-        if (users != null && identity != null) {
-            userId = users.findByMessagingIdentity(identity).map(profile -> profile.id()).orElse(null);
-        }
-        commandService.publish(event, command, arguments, userId, null);
-        return true;
     }
 
     /**
@@ -448,9 +414,34 @@ public class QqBotService {
     private Result message(String content, String openid, String scope,
                            String platform, String groupId, PluginMessagingIdentity identity) {
         CommandSettings commands = settings.commandSettings();
+        String choiceKey = (identity == null ? platform : identity.connectionId()) + ":" + scope + ":" + groupId + ":" + openid;
+        Choice previous = choices.get(choiceKey);
+        long now = System.currentTimeMillis();
+        choices.entrySet().removeIf(entry -> entry.getValue().expiresAt() < now);
+        if (previous != null && (content.matches("[0-9]{1,3}") || "取消".equals(content))) {
+            if (previous.expiresAt() < now) return Result.text("选择已过期，请重新发送查询指令。");
+            int selected = "取消".equals(content) ? previous.options().size() + 1 : Integer.parseInt(content);
+            if (selected == previous.options().size() + 1) { choices.remove(choiceKey, previous); return Result.text("已取消查询。"); }
+            if (selected < 1 || selected > previous.options().size()) return Result.text(choicePrompt(previous));
+            if (!choices.remove(choiceKey, previous)) return Result.empty();
+            String player = previous.player().isBlank() ? previous.options().get(selected - 1) : previous.player();
+            int index = previous.player().isBlank() ? previous.index() : selected;
+            content = commands.command(previous.action()).label() + " " + player + (index > 0 ? " " + index : "");
+        }
         CommandMatcher.Match match = new CommandMatcher(commands).match(content, scope);
         if (match == null) {
             return Result.empty();
+        }
+        if ("group".equals(scope) && groupId != null && !groupId.isBlank()) {
+            var group = settings.group(groupId);
+            if (!group.enabled()) return Result.empty();
+            if (CommandSettings.ACTION_PASSWORD.equals(match.action()) && !group.passwordEnabled())
+                return Result.text("该群不提供密码服务，请前往账号服务群操作。");
+            if ((CommandSettings.ACTION_BIND.equals(match.action()) || CommandSettings.ACTION_UNBIND.equals(match.action()))
+                    && !group.bindEnabled()) return Result.text("该群不提供账号绑定服务，请到账号服务群操作。");
+            if (List.of(CommandSettings.ACTION_INVENTORY, CommandSettings.ACTION_ENDER_CHEST,
+                    CommandSettings.ACTION_SHULKER, CommandSettings.ACTION_PLAYER, CommandSettings.ACTION_ONLINE).contains(match.action())
+                    && !group.queryEnabled()) return Result.text("该群未开启游戏查询，请到游戏交流群查询。");
         }
         if (!CommandSettings.ACTION_REGISTRATION.equals(match.action())
                 && !CommandSettings.ACTION_BIND.equals(match.action())
@@ -467,9 +458,13 @@ public class QqBotService {
                     match.args(), commands);
             case CommandSettings.ACTION_UNBIND -> unbind(settings.bindSettings());
             case CommandSettings.ACTION_INVENTORY, CommandSettings.ACTION_ENDER_CHEST,
-                    CommandSettings.ACTION_SHULKER -> container(match, openid);
+                    CommandSettings.ACTION_SHULKER -> container(match, openid, identity, choiceKey);
             case CommandSettings.ACTION_REGISTRATION -> registration(identity == null
                     ? null : identity);
+            case CommandSettings.ACTION_PLAYER -> resolvePlayer(match.args(), openid).isBlank()
+                    ? Result.text(BindingService.UNBOUND_ID + "。先发送「绑定 游戏ID」完成绑定，或发送「"
+                            + match.label() + " 玩家ID」查询指定玩家。")
+                    : Result.text(match.command().replyHint());
             default -> Result.text(match.command().replyHint());
         };
     }
@@ -524,13 +519,16 @@ public class QqBotService {
                 "member_openid".equalsIgnoreCase(type) ? groupId : null, event.connectionId());
     }
 
-    private void handleMemberLeave(PluginEvent event) {
+    private synchronized void handleMemberLeave(PluginEvent event) {
         BindSettings current = settings.bindSettings();
         if (!current.autoUnbindOnGroupLeave() || bindings == null || event == null
-                || event.userId() == null || event.userId().isBlank()) {
+                || event.userId() == null || event.userId().isBlank() || event.userId().equals(event.selfId())
+                || settings.configuredGroup(event.channelId()).filter(group -> group.enabled()).isEmpty()) {
             return;
         }
-        var removed = bindings.unbindAll(event.userId());
+        var removed = "official".equalsIgnoreCase(referrerProtocol(event))
+                ? bindings.unbindInGroup(event.userId(), event.connectionId(), event.channelId())
+                : bindings.unbindAll(event.userId());
         if (!removed.isEmpty()) {
             notices.publish("info", "QQ 退群解绑",
                     "群 " + text(event.channelId(), "未知") + " 的成员 " + mask(event.userId())
@@ -615,16 +613,37 @@ public class QqBotService {
      * <p>QQ 官方接口不能主动拉取用户资料，所以这里要求带上游戏 ID；管理员
      * 代查也可以用同样的写法。服务端返回 Base64 PNG，直接走富媒体接口发图。</p>
      */
-    private Result container(CommandMatcher.Match match, String openid) {
-        String player = resolvePlayer(match.args(), openid);
+    private Result container(CommandMatcher.Match match, String openid, PluginMessagingIdentity identity, String choiceKey) {
+        String[] args = match.args().isBlank() ? new String[0] : match.args().trim().split("\\s+");
+        boolean shulker = CommandSettings.ACTION_SHULKER.equals(match.action());
+        int index = 0;
+        String explicit = args.length == 0 ? "" : args[0];
+        if (shulker && args.length > 0) {
+            String number = args[args.length - 1];
+            if (number.matches("[0-9]{1,3}")) {
+                index = Integer.parseInt(number);
+                if (args.length == 1) explicit = "";
+            }
+        }
+        List<String> players = bindings == null ? List.of() : bindings.bySocial(openid, 1, 100).stream()
+                .filter(record -> identity == null || !"official".equalsIgnoreCase(identity.protocol())
+                        || (java.util.Objects.equals(identity.connectionId(), record.connectionId())
+                        && java.util.Objects.equals(identity.groupOpenid(), record.groupId())))
+                .map(record -> record.playerName()).filter(name -> name != null && !name.isBlank()).distinct().toList();
+        if (explicit.isBlank() && players.size() > 1) {
+            Choice choice = new Choice(match.action(), players, "", index, System.currentTimeMillis() + 120_000);
+            choices.put(choiceKey, choice);
+            return Result.text(choicePrompt(choice));
+        }
+        String player = explicit.isBlank() ? (players.isEmpty() ? "" : players.getFirst()) : explicit;
         if (player.isBlank()) {
-            return Result.text("还没有找到你绑定的游戏账号。先发送「绑定 游戏ID」完成绑定，"
+            return Result.text(BindingService.UNBOUND_ID + "。先发送「绑定 游戏ID」完成绑定，"
                     + "或直接发送「" + match.label() + " 玩家ID」查询指定玩家。");
         }
         if (bridge == null) {
             return Result.text("服务端桥接未就绪，暂时无法获取背包数据。");
         }
-        Optional<BridgeHub.PendingRender> pending = bridge.requestContainer(player, match.action(), match.index());
+        Optional<BridgeHub.PendingRender> pending = bridge.requestContainer(player, match.action(), index);
         if (pending.isEmpty()) {
             return Result.text("当前没有已连接的服务端，无法获取 " + player + " 的背包。");
         }
@@ -633,6 +652,14 @@ public class QqBotService {
             JsonNode result = render.future().get(RENDER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!result.path("ok").asBoolean(false)) {
                 return Result.text(result.path("message").asText("渲染失败，请稍后再试。"));
+            }
+            JsonNode options = result.path("choices");
+            if (options.isArray() && !options.isEmpty()) {
+                List<String> labels = new java.util.ArrayList<>();
+                options.forEach(option -> labels.add(option.asText()));
+                Choice choice = new Choice(CommandSettings.ACTION_SHULKER, List.copyOf(labels), player, 0, System.currentTimeMillis() + 120_000);
+                choices.put(choiceKey, choice);
+                return Result.text(choicePrompt(choice));
             }
             String image = result.path("image").asText("");
             if (image.startsWith("base64://")) {
@@ -654,7 +681,7 @@ public class QqBotService {
      * 指令参数优先；不写玩家名时按 QQ openid 反查已绑定的游戏账号。
      *
      * <p>没有绑定服务（单测）或未绑定时返回空串，由调用方提示先绑定。
-     * 绑定了多个账号时取第一个，管理员代查仍可用参数指定。</p>
+     * 容器查询会通过会话选择处理多个账号，显式参数可指定玩家。</p>
      */
     private String resolvePlayer(String args, String openid) {
         String explicit = args == null ? "" : args.trim().split("\\s+")[0];
