@@ -1,0 +1,7 @@
+.qq-binding-page { min-width:0; min-height:100%; color:var(--color-text-1); background:var(--color-bg-2); }
+.qq-binding-body { max-width:808px; padding:0 24px 24px; }
+.qq-binding-code { display:flex; flex-direction:column; gap:10px; padding:24px; border:1px solid var(--color-border-2); border-radius:8px; background:var(--color-fill-1); overflow-wrap:anywhere; }
+.qq-binding-code strong { font-size:32px; font-weight:600; letter-spacing:6px; }
+.qq-binding-code span { color:var(--color-text-3); font-size:13px; }
+.qq-binding-code p { margin:0; color:var(--color-text-2); font-size:14px; }
+@media (max-width:760px) { .qq-binding-body { padding:0 16px 24px; } }
