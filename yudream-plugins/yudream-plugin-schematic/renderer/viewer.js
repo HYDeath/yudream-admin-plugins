@@ -1,11 +1,13 @@
 import {BlockDefinition,BlockModel,Identifier,Mesh,Structure,StructureRenderer,TextureAtlas} from 'deepslate';
 import {mat4,vec3} from 'gl-matrix';
+import {chestDefinitions,chestRenderState} from './chest-model.mjs';
 
 let resources,raw,models,definitions;
 export async function initialize(data,atlasUrl) {
   raw=data;models={};definitions={};
   for(const [id,json] of Object.entries(data.models))models[id]=BlockModel.fromJson(json);
   for(const [id,json] of Object.entries(data.states))definitions[id]=BlockDefinition.fromJson(json);
+  Object.assign(definitions,chestDefinitions());
   const accessor={getBlockModel:id=>models[id.toString()]};
   for(const model of Object.values(models))model.flatten(accessor);
   const image=new Image();image.src=atlasUrl;await image.decode();
@@ -32,7 +34,7 @@ export function render(scene) {
   const structure=new Structure(scene.size);const missing=new Set();let stateVariants=new Set();
   for(const b of scene.blocks) {
     if(!definitions[b.state])missing.add(b.state);
-    structure.addBlock([b.x,b.y,b.z],b.state,b.properties);
+    structure.addBlock([b.x,b.y,b.z],chestRenderState(b.state,b.properties),b.properties);
     stateVariants.add(b.state+JSON.stringify(b.properties));
   }
   // Unknown modded blocks are reported rather than silently replaced with unrelated cubes.

@@ -9,7 +9,7 @@ npm ci
 python prepare_assets.py /trusted/cache/minecraft-client-26.3.jar --sha1 e877b6a07acd633fb3bb475002175cec036e7b87
 npm run build
 npm test
-docker build -t yudream-schematic-renderer:0.3.0 .
+docker build -t yudream-schematic-renderer:0.3.1 .
 ```
 
 官方客户端元数据：`https://piston-meta.mojang.com/v1/packages/9f67e10ed013deeaad20ac3c800652765d493408/26.3.json`。生成脚本需要 Pillow；Node 依赖由 package-lock.json 锁定。基底镜像复用项目现有 Playwright 1.60.0 渲染镜像，不修改共享渲染服务。
@@ -19,3 +19,5 @@ docker build -t yudream-schematic-renderer:0.3.0 .
 本地验收可以设置 `SCHEMATIC_CHROME_CHANNEL=chrome SCHEMATIC_RENDER_HOST=127.0.0.1 SCHEMATIC_RENDER_PORT=18837` 后运行 `npm start`。浏览器仅能请求服务内置路径，所有玩家数据通过 Playwright 的结构化参数传入，不拼接进 HTML/JavaScript。
 
 Deepslate 采用 MIT 许可，完整许可见 LICENSE-DEEPSLATE.txt；gl-matrix 许可见 LICENSE-GL-MATRIX.txt。Minecraft 模型和纹理的权利属于 Mojang/Microsoft，资源来自经校验的客户端，不包含客户端可执行类。
+
+箱子按投影的 `type=single/left/right` 与 `facing` 显示。左右半箱使用原版各自纹理，箱体和箱盖在方块边界无缝相接，两半箱扣组成一个中央箱扣；相邻的单箱不会仅因位置相邻被合并。覆盖普通箱、陷阱箱和各氧化阶段的铜箱（含涂蜡），末影箱保持单箱。
