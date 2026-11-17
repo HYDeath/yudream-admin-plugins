@@ -11,7 +11,20 @@ public record AutomationPolicy(String connectionId, String channelId, boolean en
                                List<String> riskAlertAdminUserIds,
                                boolean riskMuteEnabled, int riskMuteLowConfidence, long riskMuteLowSeconds,
                                int riskMuteHighConfidence, long riskMuteHighSeconds,
+                               String riskAlertGroupChannelId, boolean websiteApprovalRequired) {
+    public AutomationPolicy(String connectionId, String channelId, boolean enabled, boolean mediaEnabled,
+                               String mediaProviderEndpoint, boolean joinVerificationEnabled,
+                               List<String> approvedAnswers, List<String> rejectedAnswers, boolean aiFallbackEnabled,
+                               boolean failClosed, String providerCode, String modelCode,
+                               boolean riskMonitorEnabled, int riskBatchSize,
+                               int riskAlertConfidence, boolean riskAlertGroup, boolean riskAlertAdmin,
+                               List<String> riskAlertAdminUserIds,
+                               boolean riskMuteEnabled, int riskMuteLowConfidence, long riskMuteLowSeconds,
+                               int riskMuteHighConfidence, long riskMuteHighSeconds,
                                String riskAlertGroupChannelId) {
+        this(connectionId, channelId, enabled, mediaEnabled, mediaProviderEndpoint, joinVerificationEnabled, approvedAnswers, rejectedAnswers, aiFallbackEnabled, failClosed, providerCode, modelCode, riskMonitorEnabled, riskBatchSize, riskAlertConfidence, riskAlertGroup, riskAlertAdmin, riskAlertAdminUserIds, riskMuteEnabled, riskMuteLowConfidence, riskMuteLowSeconds, riskMuteHighConfidence, riskMuteHighSeconds, riskAlertGroupChannelId, false);
+    }
+
     public static final int DEFAULT_RISK_BATCH_SIZE = 20;
     public static final int DEFAULT_RISK_ALERT_CONFIDENCE = 80;
     public static final int DEFAULT_RISK_MUTE_LOW_CONFIDENCE = 70;

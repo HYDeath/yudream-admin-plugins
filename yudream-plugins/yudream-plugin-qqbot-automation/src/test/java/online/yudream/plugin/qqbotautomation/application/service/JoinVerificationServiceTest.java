@@ -103,6 +103,25 @@ class JoinVerificationServiceTest {
         assertTrue(method.get() == null, "机器人入群事件不应走审批接口");
     }
 
+    @Test
+    void websiteAdmissionCannotBeBypassedByAnswerOrAi() {
+        for (boolean approved : List.of(false, true)) {
+            InMemoryDocuments documents = new InMemoryDocuments();
+            AutomationPolicyService policies = new AutomationPolicyService(documents);
+            policies.saveDefaults(new AutomationPolicy("website-bot", "", true, false, "", true,
+                    List.of("allow"), List.of(), true, true, "", ""));
+            Map<String, Object> saved = documents.findById("automation-policy-default", "website-bot").orElseThrow();
+            saved.put("websiteApprovalRequired", true);
+            documents.save("automation-policy-default", "website-bot", saved);
+            AtomicReference<String> method = new AtomicReference<>();
+            FrameworkServices framework = framework("website-bot", true, method, new AtomicReference<>(), "ALLOW", documents);
+            new JoinVerificationService(policies, framework, new GroupModerationService(framework), event -> approved)
+                    .handle(new PluginEvent("", "group_request", "milky", "member", "review-group", "allow", null, null,
+                            Map.of("requestId", "web-" + approved), "GROUP_JOIN_REQUEST", Map.of(), "website-bot", "self", "web-" + approved));
+            assertEquals(approved ? "set_group_add_request" : null, method.get());
+        }
+    }
+
     private Invocation invoke(String answer, String requestId) {
         return invokeEvent("connection-a", "group-a", "user-a", answer, requestId,
                 Map.of("notification_seq", Long.parseLong(requestId), "group_id", "group-a", "initiator_id", "user-a", "comment", answer),
@@ -133,7 +152,7 @@ class JoinVerificationServiceTest {
                         nativeData, connectionId, "self-a", requestId));
 
         assertTrue(method.get() != null, "应发出入群审批请求");
-        return new Invocation(method.get(), payload.get(), documents.findById("join-verification-audit", connectionId + ":" + requestId).orElseThrow());
+        return new Invocation(method.get(), payload.get(), documents.findById("join-verification-audit", connectionId + ":" + channelId + ":" + requestId).orElseThrow());
     }
 
     private FrameworkServices framework(String connectionId, boolean official, AtomicReference<String> method,

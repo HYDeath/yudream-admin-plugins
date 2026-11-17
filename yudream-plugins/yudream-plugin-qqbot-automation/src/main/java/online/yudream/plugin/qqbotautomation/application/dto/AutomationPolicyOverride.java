@@ -15,7 +15,21 @@ public record AutomationPolicyOverride(String connectionId, String channelId, Bo
                                        List<String> riskAlertAdminUserIds,
                                        Boolean riskMuteEnabled, Integer riskMuteLowConfidence, Long riskMuteLowSeconds,
                                        Integer riskMuteHighConfidence, Long riskMuteHighSeconds,
+                                       String riskAlertGroupChannelId, Boolean websiteApprovalRequired) {
+    public AutomationPolicyOverride(String connectionId, String channelId, Boolean enabled, Boolean mediaEnabled,
+                                       String mediaProviderEndpoint, Boolean joinVerificationEnabled,
+                                       List<String> approvedAnswers, List<String> rejectedAnswers,
+                                       Boolean aiFallbackEnabled, Boolean failClosed, String providerCode,
+                                       String modelCode,
+                                       Boolean riskMonitorEnabled, Integer riskBatchSize,
+                                       Integer riskAlertConfidence, Boolean riskAlertGroup, Boolean riskAlertAdmin,
+                                       List<String> riskAlertAdminUserIds,
+                                       Boolean riskMuteEnabled, Integer riskMuteLowConfidence, Long riskMuteLowSeconds,
+                                       Integer riskMuteHighConfidence, Long riskMuteHighSeconds,
                                        String riskAlertGroupChannelId) {
+        this(connectionId, channelId, enabled, mediaEnabled, mediaProviderEndpoint, joinVerificationEnabled, approvedAnswers, rejectedAnswers, aiFallbackEnabled, failClosed, providerCode, modelCode, riskMonitorEnabled, riskBatchSize, riskAlertConfidence, riskAlertGroup, riskAlertAdmin, riskAlertAdminUserIds, riskMuteEnabled, riskMuteLowConfidence, riskMuteLowSeconds, riskMuteHighConfidence, riskMuteHighSeconds, riskAlertGroupChannelId, null);
+    }
+
 
     /** 兼容旧调用方的 12 参构造：风险监测字段全部继承（null）。 */
     public AutomationPolicyOverride(String connectionId, String channelId, Boolean enabled, Boolean mediaEnabled,
@@ -55,6 +69,6 @@ public record AutomationPolicyOverride(String connectionId, String channelId, Bo
                 policy.riskAlertGroup(), policy.riskAlertAdmin(), policy.riskAlertAdminUserIds(),
                 policy.riskMuteEnabled(), policy.riskMuteLowConfidence(), policy.riskMuteLowSeconds(),
                 policy.riskMuteHighConfidence(), policy.riskMuteHighSeconds(),
-                policy.riskAlertGroupChannelId());
+                policy.riskAlertGroupChannelId(), policy.websiteApprovalRequired());
     }
 }

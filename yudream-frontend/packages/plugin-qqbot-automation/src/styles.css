@@ -1,206 +1,72 @@
-/* qqbot-automation 插件样式（宿主 UnoCSS 不扫描插件包，任意值类一律落到这里） */
-
-/* 宿主全局 CSS 中不存在、但本插件模板用到的工具类，由插件按 wind4 语义自行补齐。
-   新增模板类前先确认宿主已生成，否则在此登记。 */
-.p-5 {
-  padding: 1.25rem;
+/* 仅布局与中性语义样式，控件外观和状态继承宿主。 */
+.qa-settings-page {
+  min-width: 0;
+  min-height: 100%;
+  background: var(--color-bg-2);
 }
-
-.min-h-28 {
-  min-height: 7rem;
-}
-
-.space-y-5 > :not(:first-child) {
-  margin-top: 1.25rem;
-}
-
-.w-\[min\(560px\2c calc\(100\%-2rem\)\)\] {
-  width: min(560px, calc(100% - 2rem));
-}
-
-@media (min-width: 40rem) {
-  .sm\:col-span-2 {
-    grid-column: span 2 / span 2;
-  }
-}
-
-@media (min-width: 64rem) {
-  .lg\:grid-cols-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .lg\:grid-cols-4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .lg\:col-span-2 {
-    grid-column: span 2 / span 2;
-  }
-}
-
-/*
- * 设置类页面外壳（对齐宿主 .settings-page-shell）：固定为「可视高度 - 布局占位」，
- * 白底铺满，页头与分区导航固定在壳内，只有内容区滚动（YdSettingsLayout scroll 模式）。
-*/
-.settings-page-shell {
-  display: flex;
-  flex-direction: column;
-  height: calc(
-    100dvh
-    - var(--g-slots-layout-top-height, 0px)
-    - var(--g-header-actual-height, 0px)
-    - var(--g-topbar-actual-height, 0px)
-    - var(--g-slots-layout-bottom-height, 0px)
-    - var(--g-main-container-padding-top, 0px)
-    - var(--g-main-container-padding-bottom, 0px)
-  );
-  overflow: hidden;
-  background-color: oklch(var(--card));
-}
-
-.qqbot-automation-drawer {
-  width: min(860px, 100vw);
-}
-
-.settings-page-shell .qa-fields {
+.qa-settings-notices {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 16px;
+  gap: var(--yd-content-gap, 16px);
+  padding: 0 20px;
 }
-
-.settings-page-shell .qa-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.settings-page-shell .qa-label {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.settings-page-shell .qa-desc {
-  margin: 2px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: oklch(var(--muted-foreground));
-}
-
-.settings-page-shell .qa-hint {
-  margin-top: 12px;
-  display: flex;
+.qa-connection-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: oklch(var(--muted-foreground));
+  gap: 12px;
+  max-width: 72rem;
+  width: 100%;
+  margin-inline: auto;
 }
-
-.settings-page-shell .qa-select-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.settings-page-shell .qa-select-row > :first-child {
-  flex: 1;
+.qa-label { font-size: 14px; font-weight: 500; }
+.qa-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
+  gap: var(--yd-content-gap, 20px);
   min-width: 0;
 }
-
-.settings-page-shell .qa-group-identify {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid oklch(var(--border));
+.qa-policy-form,
+.qa-settings-form { min-width: 0; }
+.qa-policy-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--yd-workspace-gap, 32px);
 }
-
-.settings-page-shell .qa-actions {
+.qa-policy-form .yd-form-item,
+.qa-settings-form .yd-form-item { min-width: 0; margin-bottom: 0; }
+.qa-settings-form {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: var(--yd-content-gap, 20px);
 }
-
-.settings-page-shell .qa-empty {
-  padding: 24px 16px;
-  text-align: center;
-  font-size: 13px;
-  color: oklch(var(--muted-foreground));
-}
-
-@media (max-width: 1100px) {
-  .settings-page-shell .qa-fields {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 按容器宽度分列，不跟视口走：挤不下就一排一个，避免抽屉/窄栏把中文挤成竖排。 */
-.qa-switch-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
-  gap: 12px;
-}
-
-.qa-switch-grid--after {
-  margin-top: 16px;
-}
-
-.qa-switch-tile {
+.qa-field-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px 16px;
-  border: 1px solid oklch(var(--border));
-  border-radius: 8px;
-  background: color-mix(in oklch, oklch(var(--muted)) 30%, transparent);
-}
-
-.qa-switch-tile--wide {
-  grid-column: 1 / -1;
-}
-
-.qa-switch-tile__text {
-  flex: 1 1 12rem;
+  gap: 8px 12px;
+  width: 100%;
   min-width: 0;
 }
-
-.qa-switch-tile__title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
+.qa-field-heading > :first-child { overflow-wrap: anywhere; }
+.qa-field-heading > :last-child { flex-shrink: 0; }
+.qa-field-stack { display: grid; gap: 12px; width: 100%; min-width: 0; }
+.qa-inline-input { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.qa-inline-input > :first-child { flex: 1 1 12rem; min-width: 0; }
+.qa-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.qa-help { margin: 0; color: var(--color-text-3); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.qa-long-text { min-width: 0; overflow-wrap: anywhere; }
+.qa-editor-content { display: grid; gap: var(--yd-workspace-gap, 24px); min-width: 0; }
+.qqbot-automation-drawer { width: min(860px, 100vw); }
+.qa-media-test-form { min-width: 0; }
+@media (max-width: 600px) {
+  .qa-settings-notices { padding-inline: 16px; }
+  .qa-connection-bar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .qa-connection-bar > :first-child { grid-column: 1 / -1; }
 }
 
-.qa-switch-tile__desc {
-  margin: 2px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: oklch(var(--muted-foreground));
-}
-
-.qa-switch-tile__controls {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.qa-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
-  gap: 16px;
-}
-
-.qa-form-span {
-  grid-column: 1 / -1;
-}
-
-.qa-mute-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
-  gap: 16px;
-  margin-top: 16px;
-}
+.qa-group-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.qa-group-toolbar > p { flex: 1 1 20rem; }
+.qa-group-identity { display: grid; justify-items: start; gap: 8px; min-width: 0; }
+.qa-capabilities { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--color-text-2); }

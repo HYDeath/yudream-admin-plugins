@@ -19,11 +19,18 @@ public class JoinVerificationService {
     private final AutomationPolicyService policies;
     private final FrameworkServices framework;
     private final GroupModerationService moderation;
+    private final java.util.function.Predicate<PluginEvent> websiteAdmission;
 
     public JoinVerificationService(AutomationPolicyService policies, FrameworkServices framework, GroupModerationService moderation) {
+        this(policies, framework, moderation, event -> false);
+    }
+
+    public JoinVerificationService(AutomationPolicyService policies, FrameworkServices framework, GroupModerationService moderation,
+                                   java.util.function.Predicate<PluginEvent> websiteAdmission) {
         this.policies = policies;
         this.framework = framework;
         this.moderation = moderation;
+        this.websiteAdmission = websiteAdmission;
     }
 
     /** 兼容旧调用方：未提供群管理原语时按 Milky 行为运行（官方判定视为非官方）。 */
@@ -69,7 +76,7 @@ public class JoinVerificationService {
                     + context(event) + ", nativeType=" + blankToDash(nativeKind));
             return;
         }
-        String key = event.connectionId() + ":" + requestId;
+        String key = event.connectionId() + ":" + event.channelId() + ":" + requestId;
         if (DECIDED.contains(key)) {
             LOG.info(PluginLogger.JOIN, "该申请已处理过，跳过" + context(event) + ", requestId=" + requestId);
             return;
@@ -79,6 +86,12 @@ public class JoinVerificationService {
             return;
         }
         try {
+            if (policy.websiteApprovalRequired()) {
+                boolean approved = websiteAdmission.test(event);
+                LOG.info(PluginLogger.JOIN, "官网准入结果=" + approved + context(event));
+                decide(event, key, requestId, comment, approved ? Decision.APPROVE : Decision.UNDECIDED);
+                return;
+            }
             Decision decision = ruleDecision(comment, policy);
             LOG.info(PluginLogger.JOIN, "规则匹配结果=" + decision
                     + context(event)

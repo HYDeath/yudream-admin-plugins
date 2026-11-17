@@ -56,7 +56,7 @@ public class AutomationPolicyService {
                 policy.riskAlertGroup(), policy.riskAlertAdmin(), safe(policy.riskAlertAdminUserIds()),
                 policy.riskMuteEnabled(), policy.riskMuteLowConfidence(), policy.riskMuteLowSeconds(),
                 policy.riskMuteHighConfidence(), policy.riskMuteHighSeconds(),
-                text(policy.riskAlertGroupChannelId()));
+                text(policy.riskAlertGroupChannelId()), policy.websiteApprovalRequired());
         validateEffective(normalized);
         documents.save(DEFAULT_COLLECTION, normalized.connectionId(), toDocument(normalized));
         return normalized;
@@ -186,7 +186,8 @@ public class AutomationPolicyService {
                 value(override.riskMuteLowSeconds(), defaults.riskMuteLowSeconds()),
                 value(override.riskMuteHighConfidence(), defaults.riskMuteHighConfidence()),
                 value(override.riskMuteHighSeconds(), defaults.riskMuteHighSeconds()),
-                value(override.riskAlertGroupChannelId(), defaults.riskAlertGroupChannelId()));
+                value(override.riskAlertGroupChannelId(), defaults.riskAlertGroupChannelId()),
+                value(override.websiteApprovalRequired(), defaults.websiteApprovalRequired()));
     }
 
     private List<AutomationPolicyOverride> mergedOverrides(String connectionId) {
@@ -257,7 +258,7 @@ public class AutomationPolicyService {
                 longValue(document.get("riskMuteLowSeconds"), defaults.riskMuteLowSeconds()),
                 integer(document.get("riskMuteHighConfidence"), defaults.riskMuteHighConfidence()),
                 longValue(document.get("riskMuteHighSeconds"), defaults.riskMuteHighSeconds()),
-                text(document.get("riskAlertGroupChannelId")));
+                text(document.get("riskAlertGroupChannelId")), bool(document.get("websiteApprovalRequired"), false));
     }
 
     private AutomationPolicyOverride overrideFromDocument(Map<String, Object> document) {
@@ -273,7 +274,7 @@ public class AutomationPolicyService {
                 nullableBoolean(document.get("riskMuteEnabled")), nullableInteger(document.get("riskMuteLowConfidence")),
                 nullableLong(document.get("riskMuteLowSeconds")), nullableInteger(document.get("riskMuteHighConfidence")),
                 nullableLong(document.get("riskMuteHighSeconds")),
-                nullableText(document.get("riskAlertGroupChannelId")));
+                nullableText(document.get("riskAlertGroupChannelId")), nullableBoolean(document.get("websiteApprovalRequired")));
     }
 
     private AutomationPolicyOverride normalize(AutomationPolicyOverride policy) {
@@ -285,7 +286,7 @@ public class AutomationPolicyService {
                 policy.riskAlertGroup(), policy.riskAlertAdmin(), nullableList(policy.riskAlertAdminUserIds()),
                 policy.riskMuteEnabled(), policy.riskMuteLowConfidence(), policy.riskMuteLowSeconds(),
                 policy.riskMuteHighConfidence(), policy.riskMuteHighSeconds(),
-                nullableText(policy.riskAlertGroupChannelId()));
+                nullableText(policy.riskAlertGroupChannelId()), policy.websiteApprovalRequired());
     }
 
     private Map<String, Object> toDocument(AutomationPolicy policy) {
@@ -314,6 +315,7 @@ public class AutomationPolicyService {
         value.put("riskMuteHighConfidence", policy.riskMuteHighConfidence());
         value.put("riskMuteHighSeconds", policy.riskMuteHighSeconds());
         value.put("riskAlertGroupChannelId", policy.riskAlertGroupChannelId());
+        value.put("websiteApprovalRequired", policy.websiteApprovalRequired());
         value.put("updatedAt", System.currentTimeMillis());
         return value;
     }
@@ -344,6 +346,7 @@ public class AutomationPolicyService {
         put(value, "riskMuteHighConfidence", policy.riskMuteHighConfidence());
         put(value, "riskMuteHighSeconds", policy.riskMuteHighSeconds());
         put(value, "riskAlertGroupChannelId", policy.riskAlertGroupChannelId());
+        put(value, "websiteApprovalRequired", policy.websiteApprovalRequired());
         value.put("updatedAt", System.currentTimeMillis());
         return value;
     }
@@ -383,7 +386,7 @@ public class AutomationPolicyService {
                 policy.riskAlertGroup(), policy.riskAlertAdmin(), policy.riskAlertAdminUserIds(),
                 policy.riskMuteEnabled(), policy.riskMuteLowConfidence(), policy.riskMuteLowSeconds(),
                 policy.riskMuteHighConfidence(), policy.riskMuteHighSeconds(),
-                policy.riskAlertGroupChannelId());
+                policy.riskAlertGroupChannelId(), policy.websiteApprovalRequired());
     }
 
     private <T> T value(T override, T fallback) {

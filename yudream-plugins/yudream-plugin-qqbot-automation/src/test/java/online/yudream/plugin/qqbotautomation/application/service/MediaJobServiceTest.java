@@ -74,48 +74,41 @@ class MediaJobServiceTest {
     }
 
     @Test
-    void downloadsBilibiliThroughProviderMetadataAndLocalCdnDownload() throws Exception {
-        AtomicInteger sentMessages = new AtomicInteger();
-        AtomicReference<PluginMessageRequest> sentRequest = new AtomicReference<>();
+    void bilibiliOnlySendsMetadataAndCoverWithoutDownloadingVideo() throws Exception {
+        AtomicInteger sent = new AtomicInteger();
+        List<PluginMessageRequest> requests = new CopyOnWriteArrayList<>();
         InMemoryDocuments documents = new InMemoryDocuments();
         AutomationPolicyService policies = new AutomationPolicyService(documents);
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-        AtomicReference<String> metadataUri = new AtomicReference<>();
-        server.createContext("/api/bilibili/web/fetch_one_video", exchange -> {
-            metadataUri.set(exchange.getRequestURI().toString());
-            writeJson(exchange, 200, "{\"code\":200,\"data\":{\"code\":0,\"data\":{\"cid\":40009337567}}}");
-        });
-        server.createContext("/cdn/video.mp4", exchange -> {
-            byte[] video = "bilibili-video-content".getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "video/mp4");
-            exchange.sendResponseHeaders(200, video.length);
-            exchange.getResponseBody().write(video);
-            exchange.close();
-        });
-        Path mediaDirectory = Files.createTempDirectory("qqbot-milky-media-");
-        String playUrlEndpointPrevious = System.getProperty("YUDREAM_QQBOT_BILIBILI_PLAYURL_ENDPOINT");
+        AtomicInteger videoRequests = new AtomicInteger();
+        server.createContext("/view", exchange -> writeJson(exchange, 200,
+                """
+                {"code":0,"data":{"title":"示例视频","desc":"视频简介","pic":"https://i0.hdslb.com/cover.jpg","owner":{"name":"作者"}}}
+                """));
+        server.createContext("/", exchange -> { videoRequests.incrementAndGet(); exchange.sendResponseHeaders(500, -1); exchange.close(); });
+        String previous = System.getProperty("YUDREAM_QQBOT_BILIBILI_METADATA_ENDPOINT");
+        Path directory = Files.createTempDirectory("bilibili-metadata-");
         try {
             server.start();
-            int port = server.getAddress().getPort();
-            server.createContext("/playurl", exchange -> writeJson(exchange, 200,
-                    "{\"code\":0,\"data\":{\"durl\":[{\"url\":\"http://localhost:" + port + "/cdn/video.mp4\"}]}}"));
-            System.setProperty("YUDREAM_QQBOT_BILIBILI_PLAYURL_ENDPOINT", "http://localhost:" + port + "/playurl");
-            MediaStorageSettings mediaSettings = new MediaStorageSettings(new InMemorySecrets());
-            mediaSettings.save(mediaDirectory.toString(), "/media");
+            System.setProperty("YUDREAM_QQBOT_BILIBILI_METADATA_ENDPOINT", "http://localhost:" + server.getAddress().getPort() + "/view");
+            MediaStorageSettings storage = new MediaStorageSettings(new InMemorySecrets());
+            storage.save(directory.toString(), "/media");
             policies.saveDefaults(new AutomationPolicy("connection-a", "", false, false,
-                    "http://localhost:" + port, false, List.of(), List.of(), false, true, "", ""));
-            MediaJobService service = service(policies, documents, framework(sentMessages, sentRequest), mediaSettings);
-
-            String jobId = service.startTest(new MediaJobTestRequest("connection-a", "group-a", "https://www.bilibili.com/video/BV1kFKG6pEvU"));
-
-            await(() -> "COMPLETED".equals(job(documents, jobId).get("status")));
-            assertEquals("/api/bilibili/web/fetch_one_video?bv_id=BV1kFKG6pEvU", metadataUri.get());
-            assertEquals("file:///media/bilibili_video/bilibili_BV1kFKG6pEvU.mp4", sentRequest.get().content().content());
-            assertEquals("bilibili-video-content", Files.readString(mediaDirectory.resolve("bilibili_video/bilibili_BV1kFKG6pEvU.mp4")));
+                    "http://localhost:" + server.getAddress().getPort(), false, List.of(), List.of(), false, true, "", ""));
+            MediaJobService service = service(policies, documents, framework(sent, null, requests, null), storage);
+            String id = service.startTest(new MediaJobTestRequest("connection-a", "group-a", "https://www.bilibili.com/video/BV1kFKG6pEvU"));
+            await(() -> "COMPLETED".equals(job(documents, id).get("status")));
+            assertEquals(2, requests.size());
+            assertEquals(online.yudream.base.plugin.spi.system.messaging.PluginMessageContent.Type.TEXT, requests.get(0).content().type());
+            assertTrue(requests.get(0).content().content().contains("视频简介"));
+            assertTrue(requests.get(0).content().content().contains("https://www.bilibili.com/video/BV1kFKG6pEvU"));
+            assertEquals(online.yudream.base.plugin.spi.system.messaging.PluginMessageContent.Type.IMAGE, requests.get(1).content().type());
+            assertEquals(0, videoRequests.get());
+            try (var files = Files.list(directory)) { assertEquals(0, files.count()); }
         } finally {
-            restoreProperty("YUDREAM_QQBOT_BILIBILI_PLAYURL_ENDPOINT", playUrlEndpointPrevious);
+            restoreProperty("YUDREAM_QQBOT_BILIBILI_METADATA_ENDPOINT", previous);
             server.stop(0);
-            deleteTree(mediaDirectory);
+            deleteTree(directory);
         }
     }
 

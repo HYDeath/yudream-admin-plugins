@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { YdLoadingOverlay, YdTablePageLayout } from '@yudream/components'
-import { computed, onMounted, ref, watch } from 'vue'
-import { YdAlert, YdButton, YdIcon, YdInput, YdModal, YdPagination, YdSelect, YdResponsiveEnhancedTable, useYdModal, useYdToast, type StatusColumn, type TableColumn } from '@yudream/components'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  YdAlert, YdButton, YdForm, YdFormItem, YdIcon, YdInput, YdLoadingOverlay,
+  YdModal, YdPagination, YdResponsiveEnhancedTable, YdSelect, YdTablePageLayout,
+  useYdModal, useYdToast, type StatusColumn, type TableColumn,
+} from '@yudream/components'
 import type { YuDreamPluginSdk } from '@yudream/plugin-sdk'
 import { createQqbotAutomationApi } from '../api/qqbot-automation-api'
 import { formatGroupLabel, type MediaJob, type Option } from '../types'
@@ -10,7 +13,6 @@ const props = defineProps<{ sdk: YuDreamPluginSdk }>()
 const api = createQqbotAutomationApi(props.sdk)
 const toast = useYdToast()
 const modal = useYdModal()
-
 const jobs = ref<MediaJob[]>([])
 const page = ref(1)
 const size = ref(10)
@@ -20,311 +22,226 @@ const clearing = ref(false)
 const error = ref('')
 const testOpen = ref(false)
 const submittingTest = ref(false)
+const optionsLoading = ref(false)
+const groupsLoading = ref(false)
+const testError = ref('')
 const connections = ref<Option[]>([])
 const groups = ref<Option[]>([])
 const testConnectionId = ref('')
 const testChannelId = ref('')
 const extraGroupId = ref('')
 const testUrl = ref('')
-
-function protocolLabel(item: Option) {
-  if (item.protocol === 'official') {
-    return '官方 QQ'
-  }
-  if (item.protocol === 'milky') {
-    return 'Milky'
-  }
-  return item.platform || '未知平台'
-}
+let listRequest = 0
+let groupRequest = 0
+let disposed = false
+const canTest = computed(() => !!testConnectionId.value && !!testChannelId.value && !!testUrl.value.trim() && !optionsLoading.value && !groupsLoading.value && !submittingTest.value)
+function protocolLabel(item: Option) { return item.protocol === 'official' ? '官方 QQ' : item.protocol === 'milky' ? 'Milky' : item.platform || '未知平台' }
 const connectionOptions = computed(() => connections.value.map(item => ({ label: `${item.name}（${protocolLabel(item)}）`, value: item.id })))
 const groupOptions = computed(() => {
   const known = groups.value.map(item => ({ label: formatGroupLabel(item), value: item.id }))
-  const knownIds = new Set(known.map(item => item.value))
-  const extras = testChannelId.value && !knownIds.has(testChannelId.value)
-    ? [{ label: formatGroupLabel({ id: testChannelId.value }), value: testChannelId.value }]
-    : []
-  return [...known, ...extras]
+  if (testChannelId.value && !known.some(item => item.value === testChannelId.value)) known.push({ label: formatGroupLabel({ id: testChannelId.value }), value: testChannelId.value })
+  return known
 })
-
 const columns: TableColumn<MediaJob>[] = [
-  { accessorKey: 'sourceUrl', header: '媒体链接', minWidth: 280, fixed: 'left' },
+  { accessorKey: 'sourceUrl', header: '媒体链接', minWidth: 240, fixed: 'left' },
   { accessorKey: 'connectionId', header: '连接', width: 150 },
   { accessorKey: 'channelId', header: '群聊', width: 150 },
   { id: 'trigger', header: '触发方式', width: 120 },
   { id: 'result', header: '结果', minWidth: 180 },
   { accessorKey: 'createdAt', header: '创建时间', width: 180 },
 ]
-
-/** 任务状态：语义色胶囊 */
 const jobStatusColumn: StatusColumn<MediaJob> = {
-  statusKey: 'status',
-  header: '状态',
-  width: 110,
+  statusKey: 'status', header: '状态', width: 110,
   statusMap: {
-    PENDING: { label: statusLabel('PENDING'), variant: 'default', tone: 'info' },
-    RUNNING: { label: statusLabel('RUNNING'), variant: 'default', tone: 'warning' },
-    SUCCESS: { label: statusLabel('SUCCESS'), variant: 'default', tone: 'success' },
-    FAILED: { label: statusLabel('FAILED'), variant: 'destructive', tone: 'danger' },
+    QUEUED: { label: '等待中', variant: 'secondary', tone: 'info' },
+    PENDING: { label: '等待中', variant: 'secondary', tone: 'info' },
+    RUNNING: { label: '处理中', variant: 'default', tone: 'warning' },
+    SUCCESS: { label: '已完成', variant: 'default', tone: 'success' },
+    COMPLETED: { label: '已完成', variant: 'default', tone: 'success' },
+    FAILED: { label: '失败', variant: 'destructive', tone: 'danger' },
+    SEND_FAILED: { label: '发送失败', variant: 'destructive', tone: 'danger' },
   },
 }
-
-function showError(cause: unknown, fallback: string) {
-  error.value = responseMessage(cause) || (cause instanceof Error && cause.message ? cause.message : fallback)
-  toast.error(error.value)
+function responseMessage(cause: unknown, fallback: string) {
+  if (cause && typeof cause === 'object') {
+    const data = (cause as { response?: { data?: unknown } }).response?.data
+    if (typeof data === 'string') return data
+    if (data && typeof data === 'object') {
+      const payload = data as { message?: unknown, error?: unknown, data?: { message?: unknown } }
+      if (typeof payload.message === 'string') return payload.message
+      if (typeof payload.error === 'string') return payload.error
+      if (typeof payload.data?.message === 'string') return payload.data.message
+    }
+  }
+  return cause instanceof Error && cause.message ? cause.message : fallback
 }
-
-function responseMessage(cause: unknown) {
-  if (!cause || typeof cause !== 'object') return ''
-  const data = (cause as { response?: { data?: unknown } }).response?.data
-  if (typeof data === 'string') return data
-  if (!data || typeof data !== 'object') return ''
-  const payload = data as { message?: unknown; error?: unknown; data?: { message?: unknown } }
-  if (typeof payload.message === 'string') return payload.message
-  if (typeof payload.error === 'string') return payload.error
-  return typeof payload.data?.message === 'string' ? payload.data.message : ''
-}
-
-
-function statusLabel(status: string) {
-  if (status === 'COMPLETED') return '已完成'
-  if (status === 'FAILED') return '失败'
-  if (status === 'SEND_FAILED') return '发送失败'
-  if (status === 'RUNNING') return '处理中'
-  if (status === 'PENDING') return '等待中'
-  return status || '-'
-}
-
-function triggerLabel(trigger?: string) {
-  if (trigger === 'MANUAL_TEST') return '手动测试'
-  if (trigger === 'EVENT') return '群消息触发'
-  return trigger || '群消息触发'
-}
-
+function showError(cause: unknown, fallback: string) { error.value = responseMessage(cause, fallback); toast.error(error.value) }
+function triggerLabel(trigger?: string) { return trigger === 'MANUAL_TEST' ? '手动测试' : trigger === 'EVENT' || !trigger ? '群消息触发' : trigger }
 function formatTime(value: number | string | null | undefined) {
   const timestamp = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(timestamp) && timestamp > 0
-    ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
-    : '-'
+  return Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : '—'
 }
-
 async function clearJobs() {
+  if (clearing.value) return
   clearing.value = true
   try {
     const result = await api.clearMediaJobs()
     toast.success(`已删除 ${result.deleted} 条媒体任务`)
-    page.value = 1
-    await load()
+    if (page.value !== 1) page.value = 1
+    else await load()
   }
-  catch (cause) {
-    showError(cause, '删除媒体任务失败')
-  }
-  finally {
-    clearing.value = false
-  }
+  catch (cause) { showError(cause, '删除媒体任务失败') }
+  finally { clearing.value = false }
 }
-
 function confirmClearJobs() {
-  if (!total.value) return
-  modal.confirm({
-    title: '清空媒体任务',
-    content: `确认删除全部 ${total.value} 条媒体任务吗？该操作不可恢复。`,
-    onConfirm: () => clearJobs(),
-  })
+  if (!total.value || clearing.value) return
+  modal.confirm({ title: '清空媒体任务', content: `确认删除全部 ${total.value} 条媒体任务吗？该操作不可恢复。`, onConfirm: () => clearJobs() })
 }
-
 async function load() {
+  const request = ++listRequest
   loading.value = true
   error.value = ''
   try {
     const result = await api.mediaJobs(page.value, size.value)
+    if (request !== listRequest || disposed) return
     jobs.value = result.records
     total.value = result.total
   }
-  catch (cause) {
-    showError(cause, '加载媒体任务失败')
-  }
-  finally {
-    loading.value = false
-  }
+  catch (cause) { if (request === listRequest && !disposed) showError(cause, '加载媒体任务失败') }
+  finally { if (request === listRequest) loading.value = false }
 }
-
+async function loadConnections() {
+  optionsLoading.value = true
+  testError.value = ''
+  try { connections.value = await api.connections() }
+  catch (cause) { testError.value = responseMessage(cause, '加载 QQ 连接失败，请重试') }
+  finally { optionsLoading.value = false }
+}
 async function openTest() {
+  if (submittingTest.value) return
   testConnectionId.value = ''
   testChannelId.value = ''
   extraGroupId.value = ''
   testUrl.value = ''
   groups.value = []
+  testError.value = ''
   testOpen.value = true
-  if (connections.value.length) return
-  try {
-    connections.value = await api.connections()
-  }
-  catch (cause) {
-    showError(cause, '加载 QQ 连接失败')
-  }
+  if (!connections.value.length) await loadConnections()
 }
-
 async function loadTestGroups() {
+  const request = ++groupRequest
+  const id = testConnectionId.value
   testChannelId.value = ''
   extraGroupId.value = ''
   groups.value = []
-  if (!testConnectionId.value) return
+  testError.value = ''
+  if (!id) { groupsLoading.value = false; return }
+  groupsLoading.value = true
   try {
-    groups.value = await api.groups(testConnectionId.value)
+    const result = await api.groups(id)
+    if (request === groupRequest && testOpen.value) groups.value = result
   }
-  catch (cause) {
-    showError(cause, '加载群聊列表失败')
-  }
+  catch (cause) { if (request === groupRequest) testError.value = responseMessage(cause, '加载群聊列表失败，请重试') }
+  finally { if (request === groupRequest) groupsLoading.value = false }
 }
-
 function closeTest() {
+  groupRequest += 1
   testOpen.value = false
   testConnectionId.value = ''
   testChannelId.value = ''
   extraGroupId.value = ''
   testUrl.value = ''
+  testError.value = ''
   groups.value = []
 }
-
 function addExtraGroup() {
   const id = extraGroupId.value.trim()
-  if (!id) return
+  if (!id || submittingTest.value || groupsLoading.value) return
   testChannelId.value = id
   extraGroupId.value = ''
 }
-
 async function monitorTest(id: string) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 60 && !disposed; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, 1000))
+    if (disposed) return
     try {
       const job = await api.mediaJob(id)
-      if (!job || job.status === 'QUEUED') continue
+      if (!job || ['QUEUED', 'PENDING', 'RUNNING'].includes(job.status)) continue
       await load()
-      if (job.status === 'FAILED') {
-        toast.error(job.error || '媒体解析失败')
-      }
-      else if (job.status === 'COMPLETED') {
-        toast.success('媒体解析完成')
-      }
+      if (disposed) return
+      if (job.status === 'FAILED' || job.status === 'SEND_FAILED') toast.error(job.error || '媒体任务失败')
+      else if (job.status === 'COMPLETED' || job.status === 'SUCCESS') toast.success('媒体解析完成')
       return
     }
-    catch {
-      // The task remains available from the table even if polling is interrupted.
-      return
-    }
+    catch { return }
   }
 }
-
 async function submitTest() {
-  if (!testConnectionId.value || !testChannelId.value || !testUrl.value.trim()) {
-    toast.error('请选择连接和群聊，并输入媒体链接')
-    return
-  }
+  if (!canTest.value) return
   submittingTest.value = true
+  testError.value = ''
   try {
-    const result = await api.startMediaTest({
-      connectionId: testConnectionId.value,
-      channelId: testChannelId.value,
-      sourceUrl: testUrl.value.trim(),
-    })
+    const result = await api.startMediaTest({ connectionId: testConnectionId.value, channelId: testChannelId.value, sourceUrl: testUrl.value.trim() })
     toast.success('测试任务已创建，解析完成后将发送到所选 QQ 群')
     closeTest()
-    page.value = 1
-    await load()
-    if (!jobs.value.some(item => item.id === result.id)) await load()
+    if (page.value !== 1) page.value = 1
+    else await load()
     void monitorTest(result.id)
   }
-  catch (cause) {
-    showError(cause, '创建测试任务失败')
-  }
-  finally {
-    submittingTest.value = false
-  }
+  catch (cause) { testError.value = responseMessage(cause, '创建测试任务失败') }
+  finally { submittingTest.value = false }
 }
-
+function beforeTestClose(action: 'confirm' | 'cancel' | 'close', done: () => void) {
+  if (submittingTest.value) return
+  if (action === 'confirm') void submitTest()
+  else done()
+}
 watch([page, size], () => void load())
 watch(testConnectionId, () => void loadTestGroups())
 onMounted(load)
+onBeforeUnmount(() => { disposed = true; listRequest += 1; groupRequest += 1 })
 </script>
 
 <template>
   <YdTablePageLayout title="媒体任务" :show-search="false">
     <template #actions>
-      <div class="flex flex-wrap gap-2">
-        <YdButton variant="destructive" :disabled="!total || clearing" @click="confirmClearJobs">
-          <YdIcon name="i-lucide:trash-2" />
-          清空任务
-        </YdButton>
-        <YdButton @click="openTest">
-          <YdIcon name="i-lucide:flask-conical" />
-          发起测试
-        </YdButton>
+      <div class="qa-actions">
+        <YdButton variant="destructive" :loading="clearing" :disabled="!total || loading" @click="confirmClearJobs"><YdIcon name="i-lucide:trash-2" />清空任务</YdButton>
+        <YdButton @click="openTest"><YdIcon name="i-lucide:flask-conical" />发起测试</YdButton>
       </div>
     </template>
     <template #table>
-      <YdAlert v-if="error" class="mb-3" variant="destructive" title="操作未完成" :description="error" />
-<YdLoadingOverlay :loading="loading"><YdResponsiveEnhancedTable
-        
-        row-key="id"
-        table-root-class="overflow-hidden rounded-lg"
-        table-class="min-w-[860px]"
-        border
-        stripe
-        column-visibility
-        :status-column="jobStatusColumn"
-        :columns="columns"
-        :data="jobs"
-        empty-text="暂无媒体任务"
-      >
-        <template #cell-sourceUrl="{ row }">
-          <a class="break-all text-primary hover:underline" :href="row.original.sourceUrl" target="_blank" rel="noreferrer">{{ row.original.sourceUrl }}</a>
-        </template>
-        <template #cell-trigger="{ row }">{{ triggerLabel(row.original.trigger) }}</template>
-        <template #cell-result="{ row }">
-          <div class="space-y-1">
-            <a v-if="row.original.downloadUrl" class="block text-primary hover:underline" :href="row.original.downloadUrl" target="_blank" rel="noreferrer">打开解析结果</a>
-            <span v-if="row.original.error" class="block break-all text-sm text-destructive">{{ row.original.error }}</span>
-            <span v-if="row.original.commentError" class="block break-all text-sm text-warning">评论未发送：{{ row.original.commentError }}</span>
-            <span v-if="!row.original.downloadUrl && !row.original.error" class="text-sm text-muted-foreground">-</span>
-          </div>
-        </template>
-        <template #cell-createdAt="{ row }">{{ formatTime(row.original.createdAt) }}</template>
-</YdResponsiveEnhancedTable></YdLoadingOverlay>
+      <YdAlert v-if="error" class="mb-3" variant="destructive" title="任务读取未完成" :description="error"><YdButton variant="outline" size="sm" @click="load">重试读取</YdButton></YdAlert>
+      <YdLoadingOverlay :loading="loading || clearing">
+        <YdResponsiveEnhancedTable row-key="id" :status-column="jobStatusColumn" :columns="columns" :data="jobs" empty-text="暂无媒体任务">
+          <template #cell-sourceUrl="{ row }"><a class="qa-long-text" :href="row.original.sourceUrl" target="_blank" rel="noreferrer">{{ row.original.sourceUrl }}</a></template>
+          <template #cell-connectionId="{ row }"><span class="qa-long-text">{{ row.original.connectionId }}</span></template>
+          <template #cell-channelId="{ row }"><span class="qa-long-text">{{ row.original.channelId }}</span></template>
+          <template #cell-trigger="{ row }">{{ triggerLabel(row.original.trigger) }}</template>
+          <template #cell-result="{ row }">
+            <div class="qa-field-stack">
+              <a v-if="row.original.downloadUrl" :href="row.original.downloadUrl" target="_blank" rel="noreferrer">打开解析结果</a>
+              <span v-if="row.original.error" class="qa-long-text">{{ row.original.error }}</span>
+              <span v-if="row.original.commentError" class="qa-long-text">评论未发送：{{ row.original.commentError }}</span>
+              <span v-if="!row.original.downloadUrl && !row.original.error">—</span>
+            </div>
+          </template>
+          <template #cell-createdAt="{ row }">{{ formatTime(row.original.createdAt) }}</template>
+        </YdResponsiveEnhancedTable>
+      </YdLoadingOverlay>
     </template>
-    <template #footer>
-      <YdPagination v-model:page="page" v-model:size="size" :total="total" />
-    </template>
+    <template #footer><YdPagination v-model:page="page" v-model:size="size" :total="total" /></template>
   </YdTablePageLayout>
 
-  <YdModal
-      v-model="testOpen"
-      title="发起媒体解析测试"
-      description="测试会解析链接，并将解析出的媒体文件发送到所选 QQ 群。"
-      :show-cancel-button="true"
-      cancel-button-text="取消"
-      confirm-button-text="开始测试"
-      :confirm-button-loading="submittingTest"
-      :confirm-button-disabled="!testConnectionId || !testChannelId || !testUrl.trim()"
-      class="w-[min(560px,calc(100%-2rem))]"
-      @confirm="submitTest"
-      @cancel="closeTest"
-      @close="closeTest"
-    >
-      <div class="grid grid-cols-1 gap-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium">QQ 连接</label>
-          <YdSelect v-model="testConnectionId" class="w-full" placeholder="选择连接" :options="connectionOptions" :disabled="submittingTest" />
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium">群聊</label>
-          <YdSelect v-model="testChannelId" class="w-full" placeholder="选择群聊" :options="groupOptions" :disabled="!testConnectionId || submittingTest" />
-          <YdInput v-model="extraGroupId" class="w-full" placeholder="官方群 openid，回车添加" :disabled="!testConnectionId || submittingTest" @keydown.enter.prevent="addExtraGroup" />
-          <p class="text-xs text-muted-foreground">官方 QQ 没有历史群列表，选项来自本进程收到过的群消息。群名缺失时可先到策略页发识别消息并写备注。</p>
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium">媒体链接</label>
-          <YdInput v-model="testUrl" class="w-full" type="url" placeholder="粘贴抖音或 Bilibili 链接" :disabled="submittingTest" />
-        </div>
-      </div>
-    </YdModal>
+  <YdModal v-model="testOpen" title="发起媒体解析测试" description="解析链接后，将媒体文件发送到所选 QQ 群。" :show-cancel-button="!submittingTest" cancel-button-text="取消" confirm-button-text="开始测试" :confirm-button-loading="submittingTest" :confirm-button-disabled="!canTest" :close-on-click-overlay="!submittingTest" :close-on-press-escape="!submittingTest" :before-close="beforeTestClose" @cancel="closeTest" @close="closeTest">
+    <YdAlert v-if="testError" variant="destructive" title="测试操作未完成" :description="testError" class="mb-3"><YdButton size="sm" variant="outline" @click="testConnectionId ? loadTestGroups() : loadConnections()">重新读取选项</YdButton></YdAlert>
+    <YdLoadingOverlay :loading="optionsLoading || groupsLoading || submittingTest">
+      <YdForm :model="{ testConnectionId, testChannelId, extraGroupId, testUrl }" :disabled="submittingTest" class="qa-media-test-form">
+        <YdFormItem label="QQ 连接"><YdSelect v-model="testConnectionId" placeholder="选择连接" :options="connectionOptions" :disabled="submittingTest" /></YdFormItem>
+        <YdFormItem label="群聊"><YdSelect v-model="testChannelId" placeholder="选择群聊" :options="groupOptions" :disabled="!testConnectionId || submittingTest" /></YdFormItem>
+        <YdFormItem label="补充官方群 openid" extra="官方群选项来自收到过的群消息。群名缺失时，可到策略页发送识别消息并写备注。"><div class="qa-inline-input"><YdInput v-model="extraGroupId" placeholder="输入官方群 openid" :disabled="!testConnectionId || submittingTest" @keydown.enter.prevent="addExtraGroup" /><YdButton variant="outline" :disabled="!testConnectionId || !extraGroupId.trim() || submittingTest" @click="addExtraGroup">添加</YdButton></div></YdFormItem>
+        <YdFormItem label="媒体链接"><YdInput v-model="testUrl" type="url" placeholder="粘贴抖音或 Bilibili 链接" /></YdFormItem>
+      </YdForm>
+    </YdLoadingOverlay>
+  </YdModal>
 </template>

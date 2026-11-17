@@ -39,7 +39,7 @@ import java.util.logging.Logger;
 
 public class MediaJobService {
     private static final String DEFAULT_DOCKER_ENDPOINT = "http://127.0.0.1";
-    private static final String DEFAULT_BILIBILI_PLAYURL_ENDPOINT = "https://api.bilibili.com/x/player/playurl";
+    private static final String DEFAULT_BILIBILI_METADATA_ENDPOINT = "https://api.bilibili.com/x/web-interface/view";
     private static final String BILIBILI_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
     private static final String BILIBILI_REFERER = "https://www.bilibili.com";
     private static final int DOCUMENT_SCAN_SIZE = 200;
@@ -203,6 +203,13 @@ public class MediaJobService {
     }
 
     private CompletionStage<DeliveryResult> deliver(MediaRequest request, DeliveryTarget target, ResolvedMedia media) {
+        if (isBilibiliSource(request.sourceUrl())) {
+            return framework.messaging().send(new PluginMessageRequest(
+                    target.connectionId(), target.platform(), target.selfId(), target.channelId(),
+                    new PluginMessageContent(PluginMessageContent.Type.TEXT, media.deliveryUri(), null, target.referrer())))
+                    .thenCompose(ignored -> sendOfficialImages(target, media.imageUrls()))
+                    .thenApply(ignored -> DeliveryResult.success());
+        }
         if (request.official()) {
             if (!media.imageUrls().isEmpty()) {
                 return sendOfficialImages(target, media.imageUrls())
@@ -675,12 +682,12 @@ public class MediaJobService {
     }
 
     private MediaRequest request(AutomationPolicy policy, String sourceUrl, boolean official) {
+        if (isBilibiliSource(sourceUrl)) {
+            return new MediaRequest(URI.create(runtimeSetting("YUDREAM_QQBOT_BILIBILI_METADATA_ENDPOINT",
+                    DEFAULT_BILIBILI_METADATA_ENDPOINT)), false, sourceUrl, official);
+        }
         String configured = configuredEndpoint(policy);
         URI configuredEndpoint = URI.create(configured);
-        if (isBilibiliSource(sourceUrl) && isDouyinDockerEndpoint(configuredEndpoint)) {
-            URI origin = URI.create(configuredEndpoint.getScheme() + "://" + configuredEndpoint.getAuthority());
-            return new MediaRequest(origin, true, sourceUrl, official);
-        }
         if (isDouyinDockerEndpoint(configuredEndpoint)) {
             URI downloadEndpoint = appendDouyinDownloadQuery(douyinDownloadEndpoint(configuredEndpoint), sourceUrl);
             return new MediaRequest(downloadEndpoint, true, sourceUrl, official);
@@ -700,7 +707,7 @@ public class MediaJobService {
     }
 
     private java.util.concurrent.CompletionStage<ResolvedMedia> resolveMedia(MediaRequest request) {
-        if (request.dockerDownload() && isBilibiliSource(request.sourceUrl())) {
+        if (isBilibiliSource(request.sourceUrl())) {
             return resolveBilibiliMedia(request);
         }
         HttpRequest httpRequest = HttpRequest.newBuilder(request.endpoint()).timeout(MEDIA_TIMEOUT).GET().build();
@@ -852,38 +859,36 @@ public class MediaJobService {
         return "application/octet-stream";
     }
 
-    /**
-     * Stock parser deployments have no Bilibili download route, so resolve the cid through the
-     * provider, fetch a single-file mp4 address from the Bilibili playurl API and store it in the
-     * shared Milky media directory ourselves. 官方连接再签发一条公网直链。
-     */
+    /** B 站分享只读取公开元数据，不获取播放地址或下载视频。 */
     private CompletionStage<ResolvedMedia> resolveBilibiliMedia(MediaRequest request) {
-        return bilibiliBvId(request)
-                .thenCompose(bvId -> fetchBilibiliCid(request, bvId)
-                        .thenCompose(cid -> fetchBilibiliPlayUrl(bvId, cid))
-                        .thenCompose(playUrl -> downloadBilibiliMedia(bvId, playUrl)
-                                .thenApply(media -> request.official() ? publishOfficialBilibili(media) : media)));
-    }
-
-    private ResolvedMedia publishOfficialBilibili(ResolvedMedia milky) {
-        String hostDirectory = mediaSettings.hostDirectory();
-        String containerDirectory = mediaSettings.containerDirectory();
-        if (!nonBlank(hostDirectory) || !containerDirectory.startsWith("/")) {
-            throw new IllegalStateException("官方连接需要先在策略页填写媒体存储目录，才能签发公网直链");
-        }
-        Path file = waitForSharedFile(resolveSharedFiles(hostDirectory, containerDirectory, milky.deliveryUri()), milky.deliveryUri());
-        try {
-            byte[] bytes = Files.readAllBytes(file);
-            String filename = file.getFileName().toString();
-            String objectKey = "official/" + UUID.randomUUID() + "/" + filename;
-            files().put(objectKey, new ByteArrayInputStream(bytes), bytes.length, "video/mp4");
-            String source = officialDeliverySource(bytes, filename, objectKey);
-            return new ResolvedMedia(source, source, List.of(), milky.deliveryUri());
-        } catch (IllegalStateException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new IllegalStateException("Could not publish Bilibili media for official QQ", exception);
-        }
+        return bilibiliBvId(request).thenCompose(bvId -> {
+            URI endpoint = URI.create(request.endpoint() + (request.endpoint().getQuery() == null ? "?" : "&") + "bvid=" + bvId);
+            HttpRequest metadata = HttpRequest.newBuilder(endpoint).timeout(MEDIA_TIMEOUT)
+                    .header("User-Agent", BILIBILI_USER_AGENT).header("Referer", BILIBILI_REFERER).GET().build();
+            return client.sendAsync(metadata, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).thenApply(response -> {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IllegalStateException("Bilibili metadata HTTP " + response.statusCode());
+                }
+                try {
+                    JsonNode root = json.readTree(response.body());
+                    if (root.path("code").asInt(-1) != 0) throw new IllegalStateException("Bilibili metadata unavailable");
+                    JsonNode data = root.path("data");
+                    String title = data.path("title").asText("").trim();
+                    if (title.isBlank()) throw new IllegalStateException("Bilibili metadata did not return a title");
+                    String url = "https://www.bilibili.com/video/" + bvId;
+                    String description = data.path("desc").asText("");
+                    if (description.length() > 1200) description = description.substring(0, 1200) + "…";
+                    String text = title + "\n" + data.path("owner").path("name").asText("")
+                            + "\n" + description + "\n" + url;
+                    String cover = data.path("pic").asText("");
+                    if (cover.startsWith("//")) cover = "https:" + cover;
+                    List<String> images = cover.startsWith("https://") ? List.of(cover) : List.of();
+                    return new ResolvedMedia(url, text, images);
+                } catch (java.io.IOException exception) {
+                    throw new IllegalStateException("Bilibili metadata returned invalid JSON", exception);
+                }
+            });
+        });
     }
 
     private CompletionStage<String> bilibiliBvId(MediaRequest request) {
@@ -898,90 +903,6 @@ public class MediaJobService {
             if (redirected.find()) return redirected.group();
             throw new IllegalStateException("Bilibili short link did not redirect to a BV id");
         });
-    }
-
-    private CompletionStage<String> fetchBilibiliCid(MediaRequest request, String bvId) {
-        URI endpoint = URI.create(douyinApiEndpoint(request.endpoint(), "/api/bilibili/web/fetch_one_video") + "?bv_id=" + bvId);
-        HttpRequest metadataRequest = HttpRequest.newBuilder(endpoint).timeout(MEDIA_TIMEOUT).GET().build();
-        return client.sendAsync(metadataRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).thenApply(response -> {
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Bilibili metadata HTTP " + response.statusCode() + ": " + providerMessage(response.body()));
-            }
-            try {
-                JsonNode cid = json.readTree(response.body()).path("data").path("data").path("cid");
-                if (!cid.isNumber() && !cid.isTextual()) {
-                    throw new IllegalStateException("Bilibili video did not return a cid");
-                }
-                return cid.asText();
-            } catch (IllegalStateException exception) {
-                throw exception;
-            } catch (Exception exception) {
-                throw new IllegalStateException("Bilibili metadata returned invalid JSON", exception);
-            }
-        });
-    }
-
-    private CompletionStage<String> fetchBilibiliPlayUrl(String bvId, String cid) {
-        String base = runtimeSetting("YUDREAM_QQBOT_BILIBILI_PLAYURL_ENDPOINT", DEFAULT_BILIBILI_PLAYURL_ENDPOINT);
-        URI endpoint = URI.create(base + (base.contains("?") ? "&" : "?")
-                + "bvid=" + bvId + "&cid=" + URLEncoder.encode(cid, StandardCharsets.UTF_8)
-                + "&qn=64&platform=html5&high_quality=1");
-        HttpRequest playUrlRequest = HttpRequest.newBuilder(endpoint).timeout(MEDIA_TIMEOUT)
-                .header("User-Agent", BILIBILI_USER_AGENT)
-                .header("Referer", BILIBILI_REFERER)
-                .GET().build();
-        return client.sendAsync(playUrlRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).thenApply(response -> {
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Bilibili playurl HTTP " + response.statusCode());
-            }
-            try {
-                JsonNode durl = json.readTree(response.body()).path("data").path("durl");
-                if (durl.isArray() && !durl.isEmpty()) {
-                    JsonNode first = durl.get(0);
-                    String primary = first.path("url").asText();
-                    if (nonBlank(primary)) return primary;
-                    String backup = firstUrl(first.path("backup_url"));
-                    if (nonBlank(backup)) return backup;
-                }
-                throw new IllegalStateException("Bilibili playurl did not return a downloadable URL");
-            } catch (IllegalStateException exception) {
-                throw exception;
-            } catch (Exception exception) {
-                throw new IllegalStateException("Bilibili playurl returned invalid JSON", exception);
-            }
-        });
-    }
-
-    private CompletionStage<ResolvedMedia> downloadBilibiliMedia(String bvId, String playUrl) {
-        String hostDirectory = mediaSettings.hostDirectory();
-        String containerDirectory = mediaSettings.containerDirectory();
-        if (!nonBlank(hostDirectory) || !containerDirectory.startsWith("/")) {
-            return CompletableFuture.completedFuture(new ResolvedMedia(playUrl, playUrl, List.of()));
-        }
-        try {
-            Path destination = Path.of(hostDirectory).resolve("bilibili_video");
-            Files.createDirectories(destination);
-            String filename = "bilibili_" + bvId + ".mp4";
-            Path temporary = Files.createTempFile(destination, ".video-", ".part");
-            HttpRequest download = HttpRequest.newBuilder(URI.create(playUrl)).timeout(MEDIA_TIMEOUT)
-                    .header("User-Agent", BILIBILI_USER_AGENT)
-                    .header("Referer", BILIBILI_REFERER)
-                    .GET().build();
-            return client.sendAsync(download, HttpResponse.BodyHandlers.ofFile(temporary)).thenApply(response -> {
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IllegalStateException("Bilibili CDN HTTP " + response.statusCode());
-                }
-                try {
-                    Files.move(temporary, destination.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
-                } catch (Exception exception) {
-                    throw new IllegalStateException("Could not store Bilibili video for Milky", exception);
-                }
-                String deliveryUri = URI.create("file://" + containerDirectory.replaceAll("/+$", "") + "/bilibili_video/" + filename).toString();
-                return new ResolvedMedia(playUrl, deliveryUri, List.of());
-            });
-        } catch (Exception exception) {
-            return CompletableFuture.failedFuture(exception);
-        }
     }
 
     private CompletionStage<ResolvedMedia> resolveMediaWithRetry(MediaRequest request, int attempts) {

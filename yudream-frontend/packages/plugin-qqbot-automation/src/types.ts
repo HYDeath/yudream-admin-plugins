@@ -39,6 +39,7 @@ export interface AutomationPolicy {
   mediaEnabled: boolean
   mediaProviderEndpoint: string
   joinVerificationEnabled: boolean
+  websiteApprovalRequired: boolean
   approvedAnswers: string[]
   rejectedAnswers: string[]
   aiFallbackEnabled: boolean
@@ -66,6 +67,7 @@ export interface AutomationPolicyOverride {
   mediaEnabled: boolean | null
   mediaProviderEndpoint: string | null
   joinVerificationEnabled: boolean | null
+  websiteApprovalRequired: boolean | null
   approvedAnswers: string[] | null
   rejectedAnswers: string[] | null
   aiFallbackEnabled: boolean | null
@@ -127,6 +129,7 @@ export const POLICY_OVERRIDE_FIELDS = [
   'mediaEnabled',
   'mediaProviderEndpoint',
   'joinVerificationEnabled',
+  'websiteApprovalRequired',
   'approvedAnswers',
   'rejectedAnswers',
   'aiFallbackEnabled',
@@ -157,6 +160,7 @@ export function emptyPolicy(connectionId = '', channelId = ''): AutomationPolicy
     mediaEnabled: false,
     mediaProviderEndpoint: '',
     joinVerificationEnabled: false,
+    websiteApprovalRequired: false,
     approvedAnswers: [],
     rejectedAnswers: [],
     aiFallbackEnabled: false,
@@ -196,6 +200,7 @@ export function emptyOverride(connectionId = '', channelId = ''): AutomationPoli
     mediaEnabled: null,
     mediaProviderEndpoint: null,
     joinVerificationEnabled: null,
+    websiteApprovalRequired: null,
     approvedAnswers: null,
     rejectedAnswers: null,
     aiFallbackEnabled: null,
@@ -225,6 +230,7 @@ export function policyFromOverride(override: AutomationPolicyOverride): Automati
     mediaEnabled: override.mediaEnabled ?? false,
     mediaProviderEndpoint: override.mediaProviderEndpoint ?? '',
     joinVerificationEnabled: override.joinVerificationEnabled ?? false,
+    websiteApprovalRequired: override.websiteApprovalRequired ?? false,
     approvedAnswers: override.approvedAnswers ?? [],
     rejectedAnswers: override.rejectedAnswers ?? [],
     aiFallbackEnabled: override.aiFallbackEnabled ?? false,
