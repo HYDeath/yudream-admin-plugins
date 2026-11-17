@@ -19,6 +19,7 @@ import online.yudream.base.plugin.spi.system.messaging.PluginEvent;
 import online.yudream.base.plugin.spi.system.messaging.PluginInteractionFilter;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessageContent;
 import online.yudream.base.plugin.spi.system.messaging.PluginMessageRequest;
+import online.yudream.base.plugin.spi.system.user.PluginMessagingIdentity;
 import online.yudream.plugin.aichatbot.application.dto.AiChatbotGroupPolicy;
 import online.yudream.plugin.aichatbot.application.dto.AiChatbotMemoryProfile;
 import online.yudream.plugin.aichatbot.application.service.AiChatbotActivityService;
@@ -31,6 +32,8 @@ import online.yudream.plugin.aichatbot.application.service.AiChatbotWikiService;
 import online.yudream.plugin.aichatbot.interfaces.controller.AiChatbotController;
 import online.yudream.plugin.aichatbot.interfaces.http.AiChatbotHttpFacade;
 import online.yudream.plugin.aichatbot.interfaces.tool.AiChatbotCurrentUserTool;
+import online.yudream.plugin.aichatbot.interfaces.tool.AiChatbotKnowledgeTools;
+import online.yudream.plugin.aichatbot.infrastructure.PublicKnowledgeClient;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -75,6 +78,9 @@ public class AiChatbotPlugin implements YuDreamPlugin {
         analysis = new AiChatbotProfileAnalysisService(profiles, policies, context.framework().ai(), messageLogs);
         context.registerHttpController(new AiChatbotController(new AiChatbotHttpFacade(policies, profiles, activities, analysis, context.framework())));
         context.registerAiTool(new AiChatbotCurrentUserTool(context.framework().users()));
+        PublicKnowledgeClient knowledge = new PublicKnowledgeClient();
+        context.onDispose(knowledge);
+        AiChatbotKnowledgeTools.create(knowledge).forEach(context::registerAiTool);
         context.interactions().onMessage(new PluginInteractionFilter(Set.of("message_receive"), "milky", null, null), this::onMessage);
         scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "ai-chatbot-profile-analysis");
@@ -258,7 +264,9 @@ public class AiChatbotPlugin implements YuDreamPlugin {
         if (!trigger.triggered()) return CompletableFuture.completedFuture(null);
         String mode = trigger.mode();
         LOGGER.info(() -> "[YuDreamAdmin] [AI Chatbot] reply triggered: connection=" + event.connectionId() + ", channel=" + event.channelId() + ", mode=" + mode);
-        var platformProfile = context.framework().users().findByQq(event.userId());
+        // AI 运行会在消息作用域关闭后异步执行，必须使用事件携带的完整消息身份，
+        // 不能把官方 member_openid/user_openid 当作旧的 QQ 字段查询。
+        var platformProfile = context.framework().users().findByMessagingIdentity(identityOf(event));
         Long userId = platformProfile.map(profile -> profile.id()).orElse(null);
         String profileUserId = userId == null ? "" : String.valueOf(userId);
         String nickname = platformProfile.map(profile -> profile.nickname()).orElse("");
@@ -430,6 +438,29 @@ public class AiChatbotPlugin implements YuDreamPlugin {
         }
         return referrer;
     }
+
+    private static PluginMessagingIdentity identityOf(PluginEvent event) {
+        if (event == null || event.userId() == null || event.userId().isBlank()) {
+            return new PluginMessagingIdentity("milky", "qq", "", null, null, null);
+        }
+        Map<String, Object> referrer = event.referrer();
+        String protocol = text(referrer.get("protocol"), event.platform());
+        if (protocol == null || protocol.isBlank()) {
+            protocol = "milky";
+        }
+        String groupOpenid = text(referrer.get("groupOpenid"), event.channelId());
+        String type = text(referrer.get("identityType"), null);
+        if (type == null || type.isBlank()) {
+            type = "official".equalsIgnoreCase(protocol)
+                    ? (groupOpenid == null || groupOpenid.isBlank() ? "user_openid" : "member_openid") : "qq";
+        }
+        return new PluginMessagingIdentity(protocol, type, event.userId(), text(referrer.get("appId"), null),
+                "member_openid".equalsIgnoreCase(type) ? groupOpenid : null, event.connectionId());
+    }
+
+    private static String text(Object value, String fallback) {
+        return value == null || String.valueOf(value).isBlank() ? fallback : String.valueOf(value).trim();
+    }
     private boolean hasReply(PluginEvent event) { Object value = event.referrer().get("replyMessageId"); return value != null && !String.valueOf(value).isBlank(); }
     private String errorMessage(Throwable error) { Throwable cause = error; while (cause.getCause() != null) cause = cause.getCause(); String message = cause.getMessage(); return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message; }
     private boolean asksForTools(String content) { String value = content == null ? "" : content; return value.contains("哪些工具") || value.contains("什么工具") || value.contains("工具列表") || value.contains("能调用") || value.contains("可用工具"); }
@@ -487,7 +518,10 @@ public class AiChatbotPlugin implements YuDreamPlugin {
         return policy.systemPrompt() + (policy.persona().isBlank() ? "" : " 人设：" + policy.persona())
                 + (profileSection == null ? "" : profileSection)
                 + injection
-                + ("RANDOM".equals(mode) ? " 这是随机回复，不调用工具，不要打断正常交流，也不要 @ 任何人。" : " 这是用户明确 @ 你，请优先回答当前用户的问题。不要自己输出 @、CQ 码或 mention 标签，出站 @ 由系统注入。");
+                + ("RANDOM".equals(mode)
+                    ? " 这是随机回复，不要打断正常交流，也不要 @ 任何人。"
+                        + (policy.toolCallingEnabled(mode) ? " 本群已允许随机回复调用已授权工具，检索事实仍须以真实结果为准。" : " 本群未开启随机回复工具调用；不检索，不声称已查证。")
+                    : " 这是用户明确 @ 你，请优先回答当前用户的问题。不要自己输出 @、CQ 码或 mention 标签，出站 @ 由系统注入。");
     }
 
     private String groupId(PluginEvent event) { return event.connectionId() + ":" + event.channelId(); }

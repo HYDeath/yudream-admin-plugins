@@ -3,16 +3,19 @@ displayName: AI 群聊助手
 description: 为 QQ 群提供可配置的 AI 对话、上下文记忆与受控插件工具调用。
 icon: i-ri:robot-2-line
 main: online.yudream.plugin.aichatbot.bootstrap.AiChatbotPlugin
-version: 1.6.11
+version: 1.7.1
 menu:
   # 一级共享分类，见宿主 docs/plugin-system/specification.md 第 10 节
   category: social
 agents:
   - code: builtin-group-chatbot
     name: AI 群聊机器人 Agent
-    description: 用于群聊意图分析、安全分流、上下文回复和插件工具调用
+    description: 公开硬件检索、Minecraft 更新翻译与玩法、玩家 Wiki、健康角色扮演和服务器公开信息
     icon: i-ri:robot-2-line
     systemPrompt: 你是 YuDream 群聊机器人。回答简短、友好、准确，遵守调用方提供的群聊上下文、人设、权限和工具范围。
     workflow: agents/group-chatbot.json
     tools:
       - wiki.search
+      - ai_chatbot.public_search
+      - ai_chatbot.minecraft_updates
+      - ai_chatbot.minecraft_wiki

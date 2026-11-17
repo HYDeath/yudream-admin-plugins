@@ -1,45 +1,97 @@
 package online.yudream.plugin.aichatbot.application.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import online.yudream.plugin.aichatbot.interfaces.tool.AiChatbotKnowledgeTools;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class AiChatbotWorkflowDefinitionTest {
-
     @Test
-    void declaresSafetyIntentHelpBranchWikiToolAndReplyOrchestration() throws Exception {
+    void everyRouteReachesEndAndOnlyRetrievalBranchesRequireTheirOwnSources() throws Exception {
         try (var input = getClass().getClassLoader().getResourceAsStream("agents/group-chatbot.json")) {
-            var graph = new ObjectMapper().readTree(input);
-            String nodes = graph.path("nodes").toString();
+            JsonNode graph = new ObjectMapper().readTree(input);
+            Map<String, JsonNode> nodes = new HashMap<>();
+            graph.path("nodes").forEach(node -> assertNull(nodes.put(node.path("id").asText(), node.path("data"))));
+            assertFalse(nodes.get("intent").path("strictJson").asBoolean());
+            assertEquals("NONE", nodes.get("intent").path("toolMode").asText());
+            Set<String> toolCodes = new HashSet<>();
+            nodes.get("research-reply").path("toolCodes").forEach(code -> toolCodes.add(code.asText()));
+            assertEquals(Set.of(AiChatbotKnowledgeTools.SEARCH, AiChatbotKnowledgeTools.UPDATES, AiChatbotKnowledgeTools.WIKI), toolCodes);
+            assertEquals("wiki.search", nodes.get("wiki-reply").path("toolCodes").path(0).asText());
+            assertEquals("REQUIRED", nodes.get("research-reply").path("toolMode").asText());
+            assertEquals("REQUIRED", nodes.get("wiki-reply").path("toolMode").asText());
+            assertEquals("NONE", nodes.get("chat-reply").path("toolMode").asText());
+            assertTrue(nodes.values().stream().noneMatch(data -> "tool".equals(data.path("kind").asText())), "使用原生模型工具回调，不能让外网失败的旧式工具节点中断降级回复");
 
-            assertEquals(14, graph.path("nodes").size());
-            assertTrue(nodes.contains("\"kind\":\"understand\""));
-            assertTrue(nodes.contains("\"kind\":\"condition\""));
-            assertTrue(nodes.contains("\"kind\":\"template\""));
-            // 求助分支：安全意图之后接求助判定，命中进入 wiki.search 工具节点（编排内检索，插件配置不再承担）
-            assertTrue(nodes.contains("\"toolCode\":\"wiki.search\""));
-            assertTrue(nodes.contains("intent.route == 'help'"));
-            // 工具分支：服务器状态、QQ 状态与历史等实时数据查询必须走工具调用，不得落入 wiki 检索
-            assertTrue(nodes.contains("intent.route == 'tool'"));
-            assertTrue(nodes.contains("\"toolMode\":\"AUTO\""));
-            // 兜底分支：wiki 无命中时回落普通群聊回复，而不是强行 wiki 作答
-            assertTrue(nodes.contains("wikiResult.count != null && wikiResult.count > 0"));
-            // 图文教程由 AI 在同一回答内显式选择图片位置，未选中的检索图片不外发
-            assertTrue(nodes.contains("[[wiki-image:index]]"));
-            assertTrue(nodes.contains("generatedCaption"));
-            // 意图兜底模板必须使用安全导航，模型输出缺字段时不得抛出 SpEL 属性错误
-            assertTrue(nodes.contains("intent?.topic ?: ''"));
-            // 意图节点必须容忍模型输出非严格 JSON（strictJson=false），避免整条群回复因解析失败而报错
-            graph.path("nodes").forEach(node -> {
-                if ("understand".equals(node.path("data").path("kind").asText())) {
-                    assertTrue(node.path("data").has("strictJson") && !node.path("data").path("strictJson").asBoolean(),
-                            "understand 节点必须显式声明 strictJson=false");
-                }
-            });
-            assertTrue(graph.path("edges").toString().contains("\"sourceHandle\":\"true\""));
-            assertTrue(graph.path("edges").toString().contains("\"sourceHandle\":\"false\""));
+            for (String route : List.of("refuse", "wiki", "research", "tool", "chat", "unknown")) {
+                List<String> path = path(graph, nodes, route);
+                assertEquals("end", path.getLast());
+                String expected = switch (route) {
+                    case "refuse" -> "refusal";
+                    case "wiki" -> "wiki-reply";
+                    case "research" -> "research-reply";
+                    case "tool" -> "tool-reply";
+                    default -> "chat-reply";
+                };
+                assertTrue(path.contains(expected), route + path);
+                assertEquals(1, path.stream().filter(id -> List.of("refusal", "wiki-reply", "research-reply", "tool-reply", "chat-reply").contains(id)).count());
+            }
+            for (String route : List.of("wiki", "research", "tool")) {
+                List<String> disabled = path(graph, nodes, route, true);
+                assertEquals(List.of("start", "tools-disabled", "chat-task", "chat-reply", "end"), disabled,
+                        "关闭工具必须在模型意图判断前确定性绕过检索");
+            }
+            try (var manifest = getClass().getClassLoader().getResourceAsStream("plugin.yml")) {
+                String text = new String(manifest.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                toolCodes.forEach(code -> assertTrue(text.contains("- " + code), "工具必须有应用级授权：" + code));
+            }
+            assertTrue(nodes.get("wiki-reply").path("prompt").asText().contains("generatedCaption"));
+            assertTrue(nodes.get("intent").path("prompt").asText().contains("谐音梗本身不构成拒绝理由"));
+            assertTrue(nodes.get("wiki-reply").path("prompt").asText().contains("用简体中文回答"));
+            assertTrue(nodes.get("research-reply").path("prompt").asText().contains("简体中文"));
+            assertTrue(nodes.get("chat-reply").path("prompt").asText().contains("谐音梗本身不是拒绝理由"));
         }
+    }
+
+    private List<String> path(JsonNode graph, Map<String, JsonNode> nodes, String route) {
+        return path(graph, nodes, route, false);
+    }
+
+    private List<String> path(JsonNode graph, Map<String, JsonNode> nodes, String route, boolean disabled) {
+        List<String> visited = new ArrayList<>();
+        String current = "start";
+        while (visited.size() <= nodes.size()) {
+            assertTrue(nodes.containsKey(current));
+            assertFalse(visited.contains(current), "工作流不能有环");
+            visited.add(current);
+            if ("end".equals(current)) return visited;
+            JsonNode data = nodes.get(current);
+            String condition = data.path("condition").asText();
+            String input = (disabled ? "YUDREAM_CHATBOT_TOOLS_DISABLED\n" : "") + "最新快照与硬件比较";
+            boolean matched = "tools-disabled".equals(current)
+                    ? input.matches(condition.substring("query matches '".length(), condition.length() - 1))
+                    : condition.equals("intent.route == '" + route + "'");
+            String branch = "condition".equals(data.path("kind").asText()) ? String.valueOf(matched) : "";
+            String source = current;
+            List<JsonNode> edges = new ArrayList<>();
+            graph.path("edges").forEach(edge -> {
+                assertTrue(nodes.containsKey(edge.path("source").asText()));
+                assertTrue(nodes.containsKey(edge.path("target").asText()));
+                if (source.equals(edge.path("source").asText()) && branch.equals(edge.path("sourceHandle").asText(""))) edges.add(edge);
+            });
+            assertEquals(1, edges.size(), current + " 的出边必须唯一：" + route);
+            current = edges.getFirst().path("target").asText();
+        }
+        fail("未到达结束节点");
+        return visited;
     }
 }
