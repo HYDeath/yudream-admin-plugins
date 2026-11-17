@@ -200,6 +200,12 @@ class AiImportJobServiceTest {
         }
 
         @Override
+        public java.util.concurrent.CompletionStage<PluginAiChatResponse> chatStream(PluginAiChatRequest request,
+                Consumer<String> onDelta, Consumer<PluginAiToolResult> onTool) {
+            return chat(request);
+        }
+
+        @Override
         public java.util.concurrent.CompletionStage<PluginAiChatResponse> chat(PluginAiChatRequest request) {
             return java.util.concurrent.CompletableFuture.completedFuture(new PluginAiChatResponse(output, List.of()));
         }
