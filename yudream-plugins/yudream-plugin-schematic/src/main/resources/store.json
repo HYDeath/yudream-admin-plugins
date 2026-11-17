@@ -1,1 +1,1 @@
-{"releaseNotes":"修复官方文件消息没有文件名时不触发投影；兼容引用消息附件读取。"}
+{"releaseNotes":"兼容 QQ 官方群文件 multimedia.nt.qq.com.cn 附件下载地址，保留下载域名与内容校验。"}

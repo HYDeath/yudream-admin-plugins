@@ -12,7 +12,7 @@
 
 ## 平台与渲染边界
 
-- 当前[官方消息类型文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/overview.html)列出群聊文件收发支持，附件由 attachments 提供，引用内容位于 msg_elements。宿主需保留文件元数据并展开引用附件；插件兼容无文件名的标准文件消息段。群直传是否推送仍取决于开放平台配置，必要时引用文件并 @机器人触发。插件不抓取聊天正文中的任意 URL。
+- 当前[官方消息类型文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/overview.html)列出群聊文件收发支持，附件由 attachments 提供，引用内容位于 msg_elements。宿主需保留文件元数据并展开引用附件；插件兼容无文件名的标准文件消息段。群内开启「接收所有消息」（recv_msg_setting=all）后直接发送文件，无需 @。仅接收 @ 时，如 QQ 客户端支持引用文件，可先发文件，再另发引用该文件并 @机器人的文字消息；不能把文件后单独 @ 当成引用。插件不抓取聊天正文中的任意 URL。
 - [Milky 协议](https://milky.ntqqrev.org/struct/Event.html)要求文件上传同时上报带 `file` 段的消息；本插件消费宿主已有的 `message_receive` 事件，无需修改宿主或发布新 SPI。文件链接 API 见[官方协议](https://milky.ntqqrev.org/api/file)。群自动出图的部署前提是已连接支持该事件与 API 的协议端。
 - 参考 [Litematica-Nova](https://github.com/LitematicaViewer/Litematica-Nova) 的元数据及双视角交互。其公开 Community 版本[不包含 Standard / Full 渲染核心](https://github.com/LitematicaViewer/Litematica-Nova/blob/main/CONTRIBUTING.md)。本插件没有复制 Nova 源码或私有运行组件。
 - 当前为**体素概览**：根据真实方块位置构建可见面，使用近似方块色、定向明暗与两个相反视角，不包含原版纹理、流体透明度、半砖/楼梯/红石等特殊模型。不是 Nova 全材质渲染器；不会自动识别建筑用途或编造 Minecraft 版本名。文件中提供的数据版本号原样显示。
@@ -40,6 +40,6 @@ mvn -pl yudream-plugins/yudream-plugin-schematic -am test package
 
 ## 参考与接入边界
 
-- [QQ 机器人官方文档](https://q.qq.com/wiki/) 与[腾讯官方文件类型说明](https://github.com/tencent-connect/bot-docs/blob/master/docs/develop/api-v2/server-inter/message/type/file.md)：官方文件接收声明限单聊 pdf/doc/txt，未开放群文件接收；不能把 Milky 的任意群文件能力当作官方 OpenAPI 能力。官方连接请使用工具箱上传。
+- [QQ 官方群消息全量模式](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)：开启「接收所有消息」后无需 @；[群内机器人状态接口](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_bot_state.get.html)可查询 recv_msg_setting，接口权限受平台白名单限制。[群 @消息附件示例](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html)使用 multimedia.nt.qq.com.cn 下载地址；插件仅增加该精确域名，不放宽到任意 qq.com.cn 子域。
 - [Milky 文件 API](https://milky.ntqqrev.org/api/file) 与[官方常见问题](https://github.com/SaltifyDev/milky/issues/46)：文件消息段与群上传通知同时上报。本插件消费宿主已有的 message_receive 文件段，按消息标识去重，再调用 get_group_file_download_url；无需扩展宿主 SPI。
 - [Litematica-Nova](https://github.com/LitematicaViewer/Litematica-Nova) 的公开 Community 说明：完整 Standard/Full 核心不在公开版中。本插件独立实现受限体素概览，没有复制其渲染核心。另以该项目公开 stats_water_fixture.litematic 核对解析，实读 27 个方块，与其 Metadata.TotalBlocks 一致；参考文件仅用于本地验收，未打入 JAR。

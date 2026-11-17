@@ -27,9 +27,14 @@ public final class QqFileDownload implements AutoCloseable {
         String host = uri.getHost();
         if (host == null || uri.getUserInfo() != null || uri.getFragment() != null || !Set.of("http", "https").contains(uri.getScheme()) || uri.getPort() != -1 && uri.getPort() != 443 && uri.getPort() != 80) throw new IllegalArgumentException("文件下载地址不合法");
         host = host.toLowerCase(Locale.ROOT);
-        if (!(host.endsWith(".qq.com") || host.endsWith(".qpic.cn") || host.endsWith(".gtimg.cn") || host.endsWith(".myqcloud.com"))) throw new IllegalArgumentException("仅允许 QQ 附件 CDN 下载地址，请在工具箱直接上传此文件");
+        if (!allowedHost(host)) throw new IllegalArgumentException("仅允许 QQ 附件 CDN 下载地址，请在工具箱直接上传此文件");
         for (InetAddress address : InetAddress.getAllByName(host)) if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress() || address.isMulticastAddress() || (address.getAddress()[0] & 254) == 252) throw new IllegalArgumentException("附件地址不可访问内网");
         return uri;
+    }
+    static boolean allowedHost(String host) {
+        // Current official group-file attachment examples use this exact Tencent CDN host.
+        return host.equals("multimedia.nt.qq.com.cn") || host.endsWith(".qq.com")
+                || host.endsWith(".qpic.cn") || host.endsWith(".gtimg.cn") || host.endsWith(".myqcloud.com");
     }
     private static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
         private final CompletableFuture<byte[]> body = new CompletableFuture<>();
