@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "sections": [
+    {
+      "code": "feature",
+      "title": "审核功能",
+      "description": "问卷申请由当前登录用户发起，题目来自 questionbank；本插件只保存申请状态和审核结果。",
+      "fields": [
+        { "key": "enabled", "label": "启用注册审核", "type": "switch", "default": true },
+        { "key": "mode", "label": "审核模式", "type": "select", "default": "quiz", "options": [
+          { "label": "问卷", "value": "quiz" },
+          { "label": "问卷 + 三连", "value": "triple_quiz" },
+          { "label": "仅三连", "value": "triple" },
+          { "label": "问卷或三连", "value": "both" }
+        ] },
+        { "key": "passingPercent", "label": "问卷及格百分比", "type": "number", "default": 80, "min": 1, "max": 100 },
+        { "key": "drawCount", "label": "每次抽题数量", "type": "number", "default": 10, "min": 1, "max": 50 },
+        { "key": "maxAttempts", "label": "每人最多申请次数", "type": "number", "default": 3, "min": 0, "max": 100, "help": "0 表示不限制。" },
+        { "key": "cooldownSeconds", "label": "重复申请冷却（秒）", "type": "number", "default": 60, "min": 0, "max": 86400 },
+        { "key": "subjectiveMode", "label": "简答题判定方式", "type": "select", "default": "REVIEW", "options": [
+          { "label": "人工审核", "value": "REVIEW" },
+          { "label": "用户自评", "value": "SELF" },
+          { "label": "AI 判分", "value": "AI" }
+        ] }
+      ]
+    },
+    {
+      "code": "questionPool",
+      "title": "题库范围",
+      "description": "筛选条件传给 questionbank。分类 ID 可通过管理端题库分类页面确认。",
+      "fields": [
+        { "key": "categoryId", "label": "题库分类 ID", "type": "text", "default": "", "maxLength": 128 },
+        { "key": "tripleCategoryId", "label": "三连加问卷题库分类 ID", "type": "text", "default": "", "maxLength": 128 },
+        { "key": "tags", "label": "题库标签", "type": "tags", "default": [] },
+        { "key": "types", "label": "题型", "type": "tags", "default": [], "help": "例如 SINGLE、MULTIPLE、JUDGE；留空表示不限。" },
+        { "key": "difficulties", "label": "难度", "type": "tags", "default": [], "help": "填写数字，逗号分隔；留空表示不限。" }
+      ]
+    }
+  ]
+}

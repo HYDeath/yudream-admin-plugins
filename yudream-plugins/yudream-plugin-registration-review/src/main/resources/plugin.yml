@@ -1,0 +1,11 @@
+name: registration-review
+displayName: 注册审核
+description: 注册准入问卷与审核流程，复用题库插件抽题和判分；B站三连由独立插件接入。
+icon: i-ri:profile-approval-line
+main: online.yudream.base.plugin.registrationreview.bootstrap.RegistrationReviewPlugin
+version: 0.4.0
+menu:
+  category: social
+softdepend:
+  - questionbank
+  - bilibili-triple
